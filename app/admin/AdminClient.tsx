@@ -208,7 +208,7 @@ function UploadSection({
         <button className="primary full" disabled={!file || busy}>
           {busy ? "上传中…" : "上传"}
         </button>
-        <p className="muted">支持 Word / Excel。{retentionDays} 天后自动删除，删除前会发邮件提醒。</p>
+        <p className="muted">支持 Word / Excel。{retentionDays} 天后自动删除（可在列表中点“延长”）。</p>
         {msg && <p className={msg.ok ? "ok" : "error"}>{msg.text}</p>}
       </form>
     </div>

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAdmin } from "@/lib/auth";
-import { MAX_FILE_BYTES, RETENTION_DAYS, adminAccounts } from "@/lib/config";
+import { MAX_FILE_BYTES, RETENTION_DAYS } from "@/lib/config";
 import type { DocumentRow } from "@/lib/format";
 import { adminDb } from "@/lib/supabase";
 import AdminClient from "./AdminClient";
@@ -22,11 +22,10 @@ export default async function AdminPage() {
     db.from("sharedoc_admin_settings").select("pin_hash").eq("user_id", admin.id).maybeSingle<{ pin_hash: string | null }>(),
   ]);
 
-  const loginId = [...adminAccounts()].find(([, email]) => email === admin.email.toLowerCase())?.[0] ?? admin.email;
 
   return (
     <AdminClient
-      loginId={loginId}
+      loginId={admin.loginId}
       docs={docs ?? []}
       hasPin={!!setting?.pin_hash}
       supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL!}

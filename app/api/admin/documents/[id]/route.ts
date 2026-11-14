@@ -61,10 +61,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       break;
     }
     case "extend":
-      update = {
-        expires_at: new Date(Date.now() + RETENTION_DAYS * 86_400_000).toISOString(),
-        reminder_sent_at: null,
-      };
+      update = { expires_at: new Date(Date.now() + RETENTION_DAYS * 86_400_000).toISOString() };
       break;
     case "regenerate":
       update = { token: newToken() };

@@ -11,7 +11,6 @@ export type DocumentRow = {
   created_at: string;
   updated_at: string;
   expires_at: string;
-  reminder_sent_at: string | null;
 };
 
 export function formatSize(bytes: number | null | undefined) {

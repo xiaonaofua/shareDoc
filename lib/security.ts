@@ -31,10 +31,12 @@ export const newToken = () => crypto.randomBytes(12).toString("base64url");
 const UNLOCK_TTL_SEC = 60 * 60; // 1 小时内不用重复输入
 export const unlockCookieName = (token: string) => `unlock_${token}`;
 
+/** 签名密钥由 service_role key 派生，无需额外配置环境变量 */
 function sign(data: string) {
-  const secret = process.env.UNLOCK_SECRET;
-  if (!secret || secret.length < 32) throw new Error("UNLOCK_SECRET 未设置或太短");
-  return crypto.createHmac("sha256", secret).update(data).digest("base64url");
+  const base = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base) throw new Error("SUPABASE_SERVICE_ROLE_KEY 未设置");
+  const key = crypto.createHash("sha256").update(`sharedoc-unlock:${base}`).digest();
+  return crypto.createHmac("sha256", key).update(data).digest("base64url");
 }
 
 /** 把密码哈希也签进去：管理员一改密码，旧 Cookie 立即失效 */
