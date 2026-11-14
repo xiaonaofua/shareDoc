@@ -13,13 +13,8 @@
 ### 1. Supabase（可以直接用已有项目，例如 memo）
 
 1. **SQL Editor** → 粘贴 `supabase/schema.sql` 全部内容 → Run。会创建 `sharedoc_` 开头的表和私有存储桶 `sharedoc-files`。
-2. **Authentication → Users → Add user → Create new user**：为每个管理员填写邮箱和密码，并勾选 *Auto Confirm User*。
-3. 回到 **SQL Editor**，登记管理员的登录 ID（只有登记在这里的人才能进入后台）：
-   ```sql
-   insert into public.sharedoc_admins (login_id, email) values
-     ('alice', 'alice@example.com'),
-     ('bob',   'bob@example.com');
-   ```
+2. **管理员 = 这个项目 Authentication → Users 里的用户**，不需要另外登记。登录 ID 可以是完整邮箱，也可以只写 `@` 前面的部分（例如 `co2sou`）；密码就是该用户在 Supabase 里的密码。要增加管理员，在 Users 里 Add user 即可。
+3. **Authentication → Sign In / Providers**：关闭 *Allow new users to sign up*。否则任何人都能自己注册账号，然后登录后台。
 4. **Project Settings → API**：复制 `Project URL`、`anon key` 和 `service_role key`，下一步要用。
 
 ### 2. Vercel
@@ -39,7 +34,7 @@
 
 打开 `https://<你的域名>/admin/login` → 用 ID 和密码登录 → 先设置 4 位查看密码 → 上传文档 → 复制链接发给对方。
 
-**以后增加或删除管理员**：只需在 Supabase 里操作（Users 里增删用户，`sharedoc_admins` 表里增删一行），不用重新部署 Vercel。
+**以后增加或删除管理员**：只需在 Supabase → Authentication → Users 里增删用户，不用重新部署 Vercel。
 
 ---
 
@@ -52,7 +47,7 @@
 | 暴力尝试 4 位密码 | 同一 IP 对同一文档 15 分钟内最多错 5 次；同一文档 1 小时内合计最多错 30 次 |
 | 文件被直接下载 | 存储桶是私有的；下载时只签发 60 秒有效的临时地址 |
 | 浏览器直接读写数据库 | 所有表都开启 RLS 并且不设任何策略；只有服务器端用 service_role 访问 |
-| 同一项目里的其他用户（如 memo 用户） | 只有登记在 `sharedoc_admins` 里的人能进后台 |
+| 陌生人自己注册账号 | 在 Supabase 关闭新用户注册；项目里的用户才能登录后台 |
 | 管理员改了密码 | 旧的“已输入密码”Cookie 会立即失效 |
 | 链接被转发出去 | 后台点“更换链接”，旧链接立刻失效 |
 
