@@ -4,7 +4,7 @@ import { findSharedDoc } from "@/lib/docs";
 import { checkUnlockCookie, unlockCookieName } from "@/lib/security";
 import { adminDb } from "@/lib/supabase";
 import { BUCKET, ENABLE_OFFICE_PREVIEW } from "@/lib/config";
-import { formatDate, formatSize } from "@/lib/format";
+import { formatDate, formatSize, needsPin } from "@/lib/format";
 import PinForm from "./PinForm";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +14,9 @@ export default async function SharedDocPage({ params }: { params: Promise<{ toke
   const found = await findSharedDoc(token);
   if (!found) notFound();
   const { doc, pinHash } = found;
+  const pinRequired = needsPin(doc);
 
-  if (!pinHash) {
+  if (pinRequired && !pinHash) {
     return (
       <main>
         <div className="card center">
@@ -27,7 +28,8 @@ export default async function SharedDocPage({ params }: { params: Promise<{ toke
   }
 
   const store = await cookies();
-  const unlocked = checkUnlockCookie(store.get(unlockCookieName(token))?.value, token, pinHash);
+  const unlocked =
+    !pinRequired || checkUnlockCookie(store.get(unlockCookieName(token))?.value, token, pinHash);
   if (!unlocked) {
     return (
       <main>

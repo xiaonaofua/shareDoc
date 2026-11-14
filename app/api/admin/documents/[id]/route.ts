@@ -24,6 +24,7 @@ async function ownDoc(id: string, ownerId: string) {
  *  - rename     { title }          修改标题
  *  - replace    { path, originalName }  替换文件（链接不变）
  *  - extend                         有效期重新计为 N 天
+ *  - access     { requirePin }     切换是否需要密码
  *  - regenerate                     生成新链接（旧链接立即失效）
  */
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -62,6 +63,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     }
     case "extend":
       update = { expires_at: new Date(Date.now() + RETENTION_DAYS * 86_400_000).toISOString() };
+      break;
+    case "access":
+      if (typeof body.requirePin !== "boolean") return bad("参数错误");
+      update = { require_pin: body.requirePin };
       break;
     case "regenerate":
       update = { token: newToken() };

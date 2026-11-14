@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { daysLeft, formatDate, formatSize, type DocumentRow } from "@/lib/format";
+import { daysLeft, formatDate, formatSize, needsPin, type DocumentRow } from "@/lib/format";
 import QrPanel from "./QrPanel";
 
 const BUCKET = "sharedoc-files";
@@ -167,6 +167,7 @@ function UploadSection({
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
+  const [requirePin, setRequirePin] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -177,7 +178,7 @@ function UploadSection({
     setMsg(null);
     try {
       const path = await uploadFile(file);
-      await api("/api/admin/documents", "POST", { path, title, originalName: file.name });
+      await api("/api/admin/documents", "POST", { path, title, originalName: file.name, requirePin });
       setMsg({ ok: true, text: "上传成功，链接已生成。" });
       setFile(null);
       setTitle("");
@@ -206,6 +207,10 @@ function UploadSection({
         />
         <label htmlFor="title">标题（访问者看到的名称）</label>
         <input id="title" type="text" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+        <label className="check">
+          <input type="checkbox" checked={requirePin} onChange={(e) => setRequirePin(e.target.checked)} />
+          需要输入 4 位密码才能查看（取消勾选 = 拿到链接的人都能直接看）
+        </label>
         <button className="primary full" disabled={!file || busy}>
           {busy ? "上传中…" : "上传"}
         </button>
@@ -230,6 +235,7 @@ function DocItem({
   onChanged: () => void;
 }) {
   const [showQr, setShowQr] = useState(false);
+  const pinRequired = needsPin(doc);
   const replaceRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -280,7 +286,10 @@ function DocItem({
 
   return (
     <div className="doc-item">
-      <div className="doc-title">{doc.title}</div>
+      <div className="doc-title">
+        {doc.title}{" "}
+        <span className={pinRequired ? "badge" : "badge open"}>{pinRequired ? "需要密码" : "无需密码"}</span>
+      </div>
       <div className="muted">
         {doc.original_name} · {formatSize(doc.size_bytes)} · 上传于 {formatDate(doc.created_at)} ·{" "}
         <span className={left <= 3 ? "warn" : undefined}>
@@ -298,6 +307,17 @@ function DocItem({
         <button disabled={busy} onClick={() => replaceRef.current?.click()}>替换文件</button>
         <button disabled={busy} onClick={() => run(() => patch({ action: "extend" }), `已延长至 ${retentionDays} 天后`)}>
           延长 {retentionDays} 天
+        </button>
+        <button
+          disabled={busy}
+          onClick={() =>
+            run(
+              () => patch({ action: "access", requirePin: !pinRequired }),
+              pinRequired ? "已改为无需密码" : "已改为需要密码",
+            )
+          }
+        >
+          {pinRequired ? "改为无需密码" : "改为需要密码"}
         </button>
         <button disabled={busy} onClick={regenerate}>更换链接</button>
         <button disabled={busy} className="danger" onClick={remove}>删除</button>

@@ -15,8 +15,11 @@ create table if not exists public.sharedoc_documents (
   size_bytes    bigint,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
-  expires_at    timestamptz not null
+  expires_at    timestamptz not null,
+  require_pin   boolean not null default true
 );
+-- 已经建过表的项目：补上“是否需要密码”这一列
+alter table public.sharedoc_documents add column if not exists require_pin boolean not null default true;
 create index if not exists sharedoc_documents_owner_idx   on public.sharedoc_documents(owner_id);
 create index if not exists sharedoc_documents_expires_idx on public.sharedoc_documents(expires_at);
 

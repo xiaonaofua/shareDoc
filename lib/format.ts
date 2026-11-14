@@ -11,7 +11,11 @@ export type DocumentRow = {
   created_at: string;
   updated_at: string;
   expires_at: string;
+  /** false = 不需要密码，任何拿到链接的人都能看（列不存在时按 true 处理） */
+  require_pin?: boolean;
 };
+
+export const needsPin = (doc: Pick<DocumentRow, "require_pin">) => doc.require_pin !== false;
 
 export function formatSize(bytes: number | null | undefined) {
   if (!bytes) return "-";

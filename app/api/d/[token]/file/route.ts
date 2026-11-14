@@ -4,6 +4,7 @@ import { findSharedDoc } from "@/lib/docs";
 import { checkUnlockCookie, unlockCookieName } from "@/lib/security";
 import { adminDb } from "@/lib/supabase";
 import { BUCKET } from "@/lib/config";
+import { needsPin } from "@/lib/format";
 
 /** 下载：校验密码 Cookie 后，跳转到 60 秒有效的签名地址 */
 export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
@@ -12,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   if (!found) return new NextResponse("Not found", { status: 404 });
 
   const store = await cookies();
-  if (!checkUnlockCookie(store.get(unlockCookieName(token))?.value, token, found.pinHash)) {
+  if (needsPin(found.doc) && !checkUnlockCookie(store.get(unlockCookieName(token))?.value, token, found.pinHash)) {
     return NextResponse.redirect(new URL(`/d/${token}`, _req.url));
   }
 

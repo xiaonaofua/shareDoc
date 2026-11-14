@@ -118,3 +118,16 @@ select {
 .qr-img { width: 220px; height: 220px; image-rendering: pixelated; border-radius: 6px; background: #fff; }
 .qr-controls { flex: 1 1 220px; }
 .qr-controls label { margin-top: 0; margin-bottom: 10px; }
+.check { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; cursor: pointer; }
+.check input { margin-top: 4px; }
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  vertical-align: middle;
+}
+.badge.open { color: var(--warn); border-color: var(--warn); }

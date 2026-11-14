@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const admin = await requireAdmin();
   if (admin instanceof NextResponse) return admin;
 
-  const { path, title, originalName } = await req.json().catch(() => ({}));
+  const { path, title, originalName, requirePin } = await req.json().catch(() => ({}));
   const uploaded = await verifyUploaded(admin.id, path);
   if (!uploaded) return bad("找不到已上传的文件");
   const name = typeof originalName === "string" && originalName.trim() ? originalName.trim().slice(0, 200) : path;
@@ -23,6 +23,7 @@ export async function POST(req: Request) {
       owner_email: admin.email,
       token: newToken(),
       title: (typeof title === "string" && title.trim() ? title.trim() : name).slice(0, 200),
+      require_pin: requirePin !== false,
       file_path: path,
       original_name: name,
       mime_type: ALLOWED_TYPES[ext],
