@@ -5,10 +5,10 @@ import type { DocumentRow } from "./format";
 export async function findSharedDoc(token: string) {
   if (!/^[A-Za-z0-9_-]{16}$/.test(token)) return null;
   const db = adminDb();
-  const { data: doc } = await db.from("documents").select("*").eq("token", token).maybeSingle<DocumentRow>();
+  const { data: doc } = await db.from("sharedoc_documents").select("*").eq("token", token).maybeSingle<DocumentRow>();
   if (!doc || new Date(doc.expires_at).getTime() <= Date.now()) return null;
   const { data: setting } = await db
-    .from("admin_settings")
+    .from("sharedoc_admin_settings")
     .select("pin_hash")
     .eq("user_id", doc.owner_id)
     .maybeSingle<{ pin_hash: string | null }>();

@@ -12,9 +12,9 @@
 
 ### 1. Supabase
 
-1. 新建项目。
-2. **SQL Editor** → 粘贴 `supabase/schema.sql` 全部内容并运行（创建 3 张表和私有存储桶 `documents`）。
-3. **Authentication → Sign In / Providers**：关闭 *Allow new users to sign up*，这样任何人都无法自行注册。
+1. 新建项目，或者直接用已有的项目（见下方“与已有项目共用”）。
+2. **SQL Editor** → 粘贴 `supabase/schema.sql` 全部内容并运行（创建 3 张 `sharedoc_` 开头的表和私有存储桶 `sharedoc-files`）。
+3. **Authentication → Sign In / Providers**：关闭 *Allow new users to sign up*，这样任何人都无法自行注册。（如果和其他需要注册功能的应用共用这个项目，就**不要关闭**。本站只认 `ADMIN_ACCOUNTS` 里列出的人，其他用户登录不了后台。）
 4. **Authentication → Users → Add user → Create new user**：给每个管理员创建一个账号，填写邮箱和密码，并勾选 *Auto Confirm User*。
 5. **Project Settings → API**：记下 `Project URL`、`anon key` 和 `service_role key`。
 
@@ -56,6 +56,15 @@
 **在线预览说明**：预览功能使用微软 Office Online，会把一个 30 分钟有效的临时文件地址交给微软服务器读取。如果文件比较敏感，可以设置 `ENABLE_OFFICE_PREVIEW=false`，这样访问者只能下载。
 
 **Supabase 免费版注意**：项目连续一段时间没有访问（大约 7 天）会被自动暂停，暂停后需要到控制台手动恢复。具体规则以官方说明为准。
+
+## 与已有 Supabase 项目共用（例如 memo）
+
+可以共用。本站的表都以 `sharedoc_` 开头，存储桶叫 `sharedoc-files`，不会和其他应用的同名对象冲突。共用前请先检查以下几点：
+
+1. **存储策略**：在 Storage → Policies 里查看 `storage.objects` 上的策略。如果有类似“已登录用户可以读取所有对象”、却**没有限定 `bucket_id`** 的策略，那么另一个应用的用户也能读到本站的文件。请把这类策略改成只作用于那个应用自己的桶。
+2. **账号是共享的**：两个应用用的是同一个用户表（auth.users）。本站通过 `ADMIN_ACCOUNTS` 白名单做限制，只有名单里的人能进后台。
+3. **密钥是共享的**：`service_role key` 一旦泄露，两个应用的数据都会暴露。
+4. **免费额度是共享的**：数据库和存储空间合计计算。好处是只要其中一个应用有人在用，项目就不会因长期不活跃而被暂停。
 
 ## 本地开发
 

@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
   // ---- 1. 提醒 ----
   const { data: soon } = await db
-    .from("documents")
+    .from("sharedoc_documents")
     .select("*")
     .is("reminder_sent_at", null)
     .lte("expires_at", remindBefore.toISOString())
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     const ok = await sendMail(email, `【Doc Share】${docs.length} 个文档即将自动删除`, html);
     if (ok) {
       await db
-        .from("documents")
+        .from("sharedoc_documents")
         .update({ reminder_sent_at: now.toISOString() })
         .in("id", docs.map((d) => d.id));
       reminded += docs.length;
@@ -51,7 +51,7 @@ export async function GET(req: Request) {
 
   // ---- 2. 删除（必须已提醒过）----
   const { data: expired } = await db
-    .from("documents")
+    .from("sharedoc_documents")
     .select("id, file_path")
     .lte("expires_at", now.toISOString())
     .not("reminder_sent_at", "is", null)
@@ -61,14 +61,14 @@ export async function GET(req: Request) {
   if (expired?.length) {
     const { error } = await db.storage.from(BUCKET).remove(expired.map((d) => d.file_path));
     if (!error) {
-      await db.from("documents").delete().in("id", expired.map((d) => d.id));
+      await db.from("sharedoc_documents").delete().in("id", expired.map((d) => d.id));
       deleted = expired.length;
     }
   }
 
   // ---- 3. 清理旧的密码错误记录 ----
   await db
-    .from("pin_attempts")
+    .from("sharedoc_pin_attempts")
     .delete()
     .lt("window_start", new Date(now.getTime() - 86_400_000).toISOString());
 

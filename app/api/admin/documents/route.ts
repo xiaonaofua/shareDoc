@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const ext = extOf(path)!;
 
   const { data, error } = await adminDb()
-    .from("documents")
+    .from("sharedoc_documents")
     .insert({
       owner_id: admin.id,
       owner_email: admin.email,

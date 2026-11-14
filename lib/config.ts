@@ -3,7 +3,7 @@ function num(v: string | undefined, d: number) {
   return Number.isFinite(n) && n > 0 ? n : d;
 }
 
-export const BUCKET = "documents";
+export const BUCKET = "sharedoc-files";
 export const RETENTION_DAYS = num(process.env.RETENTION_DAYS, 30);
 export const REMIND_DAYS_BEFORE = num(process.env.REMIND_DAYS_BEFORE, 3);
 export const MAX_FILE_BYTES = num(process.env.MAX_FILE_MB, 20) * 1024 * 1024;

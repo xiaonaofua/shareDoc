@@ -12,7 +12,7 @@ export async function PUT(req: Request) {
   if (!isValidPin(pin)) return bad("密码必须是 4 位数字");
 
   const { error } = await adminDb()
-    .from("admin_settings")
+    .from("sharedoc_admin_settings")
     .upsert({ user_id: admin.id, pin_hash: hashPin(pin), updated_at: new Date().toISOString() });
   if (error) return bad("保存失败", 500);
   return NextResponse.json({ ok: true });

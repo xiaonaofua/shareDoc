@@ -14,12 +14,12 @@ export default async function AdminPage() {
   const db = adminDb();
   const [{ data: docs }, { data: setting }] = await Promise.all([
     db
-      .from("documents")
+      .from("sharedoc_documents")
       .select("*")
       .eq("owner_id", admin.id)
       .order("created_at", { ascending: false })
       .returns<DocumentRow[]>(),
-    db.from("admin_settings").select("pin_hash").eq("user_id", admin.id).maybeSingle<{ pin_hash: string | null }>(),
+    db.from("sharedoc_admin_settings").select("pin_hash").eq("user_id", admin.id).maybeSingle<{ pin_hash: string | null }>(),
   ]);
 
   const loginId = [...adminAccounts()].find(([, email]) => email === admin.email.toLowerCase())?.[0] ?? admin.email;

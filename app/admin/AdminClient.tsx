@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { daysLeft, formatDate, formatSize, type DocumentRow } from "@/lib/format";
 
-const BUCKET = "documents";
+const BUCKET = "sharedoc-files";
 const MIME: Record<string, string> = {
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

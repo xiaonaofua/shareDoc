@@ -11,7 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
 /** 只取当前管理员自己的文档；别人的文档一律当作不存在 */
 async function ownDoc(id: string, ownerId: string) {
   const { data } = await adminDb()
-    .from("documents")
+    .from("sharedoc_documents")
     .select("*")
     .eq("id", id)
     .eq("owner_id", ownerId)
@@ -73,7 +73,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       return bad("未知操作");
   }
 
-  const { error } = await db.from("documents").update({ ...update, updated_at: now }).eq("id", doc.id);
+  const { error } = await db.from("sharedoc_documents").update({ ...update, updated_at: now }).eq("id", doc.id);
   if (error) return bad("保存失败", 500);
   if (body.action === "replace" && doc.file_path !== update.file_path) {
     await db.storage.from(BUCKET).remove([doc.file_path]);
@@ -90,7 +90,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
 
   const db = adminDb();
   await db.storage.from(BUCKET).remove([doc.file_path]);
-  const { error } = await db.from("documents").delete().eq("id", doc.id);
+  const { error } = await db.from("sharedoc_documents").delete().eq("id", doc.id);
   if (error) return bad("删除失败", 500);
   return NextResponse.json({ ok: true });
 }

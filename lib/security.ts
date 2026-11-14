@@ -69,7 +69,7 @@ function keysFor(token: string, ip: string) {
 export async function lockedMinutes(token: string, ip: string): Promise<number> {
   const db = adminDb();
   const keys = keysFor(token, ip);
-  const { data } = await db.from("pin_attempts").select("*").in("key", keys.map((k) => k.key));
+  const { data } = await db.from("sharedoc_pin_attempts").select("*").in("key", keys.map((k) => k.key));
   let wait = 0;
   for (const k of keys) {
     const row = (data as Attempt[] | null)?.find((r) => r.key === k.key);
@@ -83,9 +83,9 @@ export async function lockedMinutes(token: string, ip: string): Promise<number> 
 export async function recordFailure(token: string, ip: string) {
   const db = adminDb();
   for (const k of keysFor(token, ip)) {
-    const { data: row } = await db.from("pin_attempts").select("*").eq("key", k.key).maybeSingle<Attempt>();
+    const { data: row } = await db.from("sharedoc_pin_attempts").select("*").eq("key", k.key).maybeSingle<Attempt>();
     const expired = !row || new Date(row.window_start).getTime() + k.windowMin * 60_000 < Date.now();
-    await db.from("pin_attempts").upsert({
+    await db.from("sharedoc_pin_attempts").upsert({
       key: k.key,
       fails: expired ? 1 : row!.fails + 1,
       window_start: expired ? new Date().toISOString() : row!.window_start,
@@ -94,7 +94,7 @@ export async function recordFailure(token: string, ip: string) {
 }
 
 export async function clearFailures(token: string, ip: string) {
-  await adminDb().from("pin_attempts").delete().eq("key", `ip:${ip}:${token}`);
+  await adminDb().from("sharedoc_pin_attempts").delete().eq("key", `ip:${ip}:${token}`);
 }
 
 export function clientIp(headers: Headers): string {
