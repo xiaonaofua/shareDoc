@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { daysLeft, formatDate, formatSize, type DocumentRow } from "@/lib/format";
+import QrPanel from "./QrPanel";
 
 const BUCKET = "sharedoc-files";
 const MIME: Record<string, string> = {
@@ -228,6 +229,7 @@ function DocItem({
   retentionDays: number;
   onChanged: () => void;
 }) {
+  const [showQr, setShowQr] = useState(false);
   const replaceRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -288,22 +290,9 @@ function DocItem({
       <div className="row" style={{ marginTop: 8 }}>
         <div className="link-box">{link}</div>
         <button onClick={copy}>复制链接</button>
-        <a
-          className="btn"
-          href="https://www.cman.jp/QRcode/qr_make/"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="复制链接并在新标签页打开二维码生成网站，粘贴即可生成"
-          onClick={() => {
-            navigator.clipboard?.writeText(link).then(
-              () => setMsg({ ok: true, text: "链接已复制，请在新标签页里粘贴生成二维码" }),
-              () => {},
-            );
-          }}
-        >
-          生成二维码 ↗
-        </a>
+        <button onClick={() => setShowQr((v) => !v)}>{showQr ? "收起二维码" : "二维码"}</button>
       </div>
+      {showQr && <QrPanel link={link} title={doc.title} />}
       <div className="row actions">
         <button disabled={busy} onClick={rename}>修改标题</button>
         <button disabled={busy} onClick={() => replaceRef.current?.click()}>替换文件</button>
