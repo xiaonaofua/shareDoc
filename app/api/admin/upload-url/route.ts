@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { bad, requireAdmin } from "@/lib/api";
 import { BUCKET, MAX_FILE_BYTES, extOf } from "@/lib/config";
 import { adminDb } from "@/lib/supabase";
+import { SUPPORTED_LABEL } from "@/lib/filetypes";
 
 /**
  * 签发一次性上传地址。浏览器拿着它把文件直接传给 Supabase，
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
   const { fileName, size } = await req.json().catch(() => ({}));
   if (typeof fileName !== "string") return bad("缺少文件名");
   const ext = extOf(fileName);
-  if (!ext) return bad("只支持 .doc / .docx / .xls / .xlsx");
+  if (!ext) return bad(`不支持这种格式。支持：${SUPPORTED_LABEL}`);
   if (typeof size !== "number" || size <= 0 || size > MAX_FILE_BYTES) {
     return bad(`文件不能超过 ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB`);
   }

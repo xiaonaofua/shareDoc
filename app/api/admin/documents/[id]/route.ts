@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { bad, requireAdmin } from "@/lib/api";
-import { ALLOWED_TYPES, BUCKET, RETENTION_DAYS, extOf } from "@/lib/config";
+import { BUCKET, FILE_TYPES, RETENTION_DAYS, extOf } from "@/lib/config";
+import { ownSpaceId } from "@/lib/docs";
 import type { DocumentRow } from "@/lib/format";
 import { newToken } from "@/lib/security";
 import { verifyUploaded } from "@/lib/storage-check";
@@ -25,6 +26,7 @@ async function ownDoc(id: string, ownerId: string) {
  *  - replace    { path, originalName }  替换文件（链接不变）
  *  - extend                         有效期重新计为 N 天
  *  - access     { requirePin }     切换是否需要密码
+ *  - space      { spaceId|null }   放入空间 / 移出空间
  *  - regenerate                     生成新链接（旧链接立即失效）
  */
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -56,7 +58,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       update = {
         file_path: body.path,
         original_name: name,
-        mime_type: ALLOWED_TYPES[extOf(body.path)!],
+        mime_type: FILE_TYPES[extOf(body.path)!].mime,
         size_bytes: uploaded.size,
       };
       break;
@@ -68,6 +70,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
       if (typeof body.requirePin !== "boolean") return bad("参数错误");
       update = { require_pin: body.requirePin };
       break;
+    case "space": {
+      const space = await ownSpaceId(admin.id, body.spaceId);
+      if (space === undefined) return bad("空间不存在");
+      update = { space_id: space };
+      break;
+    }
     case "regenerate":
       update = { token: newToken() };
       break;

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function PinForm({ token }: { token: string }) {
+export default function PinForm({ action }: { action: string }) {
   const router = useRouter();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -13,7 +13,7 @@ export default function PinForm({ token }: { token: string }) {
     e.preventDefault();
     setBusy(true);
     setError("");
-    const res = await fetch(`/api/d/${token}/unlock`, {
+    const res = await fetch(action, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pin }),

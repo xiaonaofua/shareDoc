@@ -13,6 +13,18 @@ export type DocumentRow = {
   expires_at: string;
   /** false = 不需要密码，任何拿到链接的人都能看（列不存在时按 true 处理） */
   require_pin?: boolean;
+  /** 所属空间（可为空） */
+  space_id?: string | null;
+};
+
+export type SpaceRow = {
+  id: string;
+  owner_id: string;
+  token: string;
+  title: string;
+  require_pin: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export const needsPin = (doc: Pick<DocumentRow, "require_pin">) => doc.require_pin !== false;
