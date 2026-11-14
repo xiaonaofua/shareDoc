@@ -288,6 +288,21 @@ function DocItem({
       <div className="row" style={{ marginTop: 8 }}>
         <div className="link-box">{link}</div>
         <button onClick={copy}>复制链接</button>
+        <a
+          className="btn"
+          href="https://www.cman.jp/QRcode/qr_make/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="复制链接并在新标签页打开二维码生成网站，粘贴即可生成"
+          onClick={() => {
+            navigator.clipboard?.writeText(link).then(
+              () => setMsg({ ok: true, text: "链接已复制，请在新标签页里粘贴生成二维码" }),
+              () => {},
+            );
+          }}
+        >
+          生成二维码 ↗
+        </a>
       </div>
       <div className="row actions">
         <button disabled={busy} onClick={rename}>修改标题</button>
