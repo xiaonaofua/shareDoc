@@ -15,13 +15,13 @@ const LEVELS: { label: string; value: Level }[] = [
   { label: "L（7%）", value: "L" },
   { label: "M（15%）", value: "M" },
   { label: "Q（25%）", value: "Q" },
-  { label: "H（30%）", value: "H" },
+  { label: "H（30%，最高）", value: "H" },
 ];
 
 /** 在浏览器本地生成二维码，链接不会发送到任何外部网站 */
 export default function QrPanel({ link, title }: { link: string; title: string }) {
   const [size, setSize] = useState(400);
-  const [level, setLevel] = useState<Level>("M");
+  const [level, setLevel] = useState<Level>("H");
   const [png, setPng] = useState("");
   const [svg, setSvg] = useState("");
 
@@ -45,7 +45,6 @@ export default function QrPanel({ link, title }: { link: string; title: string }
 
   return (
     <div className="qr-panel">
-      {png && <img className="qr-img" src={png} alt={`${title} 的二维码`} />}
       <div className="qr-controls">
         <label>
           尺寸
@@ -68,9 +67,13 @@ export default function QrPanel({ link, title }: { link: string; title: string }
           <a className="btn" href={svg} download={`${fileBase}.svg`}>下载 SVG</a>
         </div>
         <p className="muted" style={{ marginTop: 8 }}>
-          手机上可以长按图片保存。纠错等级越高，二维码被遮挡或打印模糊时越容易扫出，但图案也越密。
+          下方按实际像素显示（{size}×{size}px），屏幕放不下时会自动缩小。手机上可以长按图片保存。
+          纠错等级越高，二维码被遮挡或打印模糊时越容易扫出，但图案也越密。
         </p>
       </div>
+      {png && (
+        <img className="qr-img" src={png} alt={`${title} 的二维码`} style={{ width: size }} />
+      )}
     </div>
   );
 }
