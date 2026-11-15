@@ -15,5 +15,11 @@ export default async function SpaceDocPage({ params }: { params: Promise<{ token
   const doc = await findSpaceDoc(access.space.id, docId);
   if (!doc) notFound();
 
-  return <DocViewer doc={doc} back={{ href: `/s/${token}`, label: access.space.title }} />;
+  return (
+    <DocViewer
+      doc={doc}
+      back={{ href: `/s/${token}`, label: access.space.title }}
+      downloadHref={access.space.allow_download ? `/api/s/${token}/file/${doc.id}` : undefined}
+    />
+  );
 }

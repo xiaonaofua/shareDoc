@@ -51,6 +51,12 @@ type Api = ReturnType<typeof useApi>;
 type Notify = (text: string, error?: boolean) => void;
 
 const isNote = (d: DocumentRow) => isNoteName(d.original_name);
+
+/** 图标下方的小标签：可下载 / 仅查看 */
+function StateTag({ download }: { download: boolean }) {
+  const t = useT();
+  return <span className={download ? "state-tag dl" : "state-tag view"}>{download ? t("badgeDownload") : t("badgeViewOnly")}</span>;
+}
 const isPlainEditable = (d: DocumentRow) => !isNote(d) && ["text", "markdown"].includes(kindOf(d.file_path));
 const baseName = (n: string) => n.replace(/\.[^.]+$/, "");
 const safeName = (n: string) => n.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100);
@@ -305,6 +311,7 @@ export default function AdminClient(props: Props) {
                 </div>
                 <div className="item-name">{s.title}</div>
                 <div className="item-meta">{t("items", { n: counts.get(s.id) ?? 0 })}</div>
+                <StateTag download={s.allow_download === true} />
               </button>
             ))}
           {visibleDocs.map((d) => (
@@ -329,6 +336,7 @@ export default function AdminClient(props: Props) {
               </div>
               <div className="item-name">{d.title}</div>
               <div className="item-meta">{formatSize(d.size_bytes)}</div>
+              <StateTag download={d.allow_download === true} />
             </button>
           ))}
         </div>
@@ -603,6 +611,7 @@ function DocSheet({
         <div className="muted">
           {formatSize(doc.size_bytes)} · {left > 0 ? t("daysLeft", { n: left }) : t("deletingSoon")}
         </div>
+        <StateTag download={doc.allow_download === true} />
         <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
           <a className="btn filled" href={`/preview/${doc.id}`} style={{ minWidth: 130 }}>
             {t("preview")}
@@ -625,6 +634,17 @@ function DocSheet({
             checked={needsPin(doc)}
             disabled={busy}
             onChange={(v) => run(() => patch({ action: "access", requirePin: v }), v ? t("pinOn") : t("pinOff"))}
+          />
+        </div>
+        <div className="cell">
+          <span className="grow">{t("allowDownload")}</span>
+          <Switch
+            label={t("allowDownload")}
+            checked={doc.allow_download === true}
+            disabled={busy}
+            onChange={(v) =>
+              run(() => patch({ action: "download", allowDownload: v }), v ? t("downloadOn") : t("downloadOff"))
+            }
           />
         </div>
         {spaces.length > 0 && (
@@ -752,6 +772,7 @@ function SpaceSheet({
         <FolderIcon size={96} />
         <div className="name">{space.title}</div>
         <div className="muted">{t("items", { n: count })}</div>
+        <StateTag download={space.allow_download === true} />
         {onOpen && (
           <button className="btn filled" style={{ marginTop: 10, minWidth: 130 }} onClick={onOpen}>
             {t("open")}
@@ -769,6 +790,17 @@ function SpaceSheet({
             checked={space.require_pin !== false}
             disabled={busy}
             onChange={(v) => run(() => patch({ action: "access", requirePin: v }), v ? t("pinOn") : t("pinOff"))}
+          />
+        </div>
+        <div className="cell">
+          <span className="grow">{t("allowDownload")}</span>
+          <Switch
+            label={t("allowDownload")}
+            checked={space.allow_download === true}
+            disabled={busy}
+            onChange={(v) =>
+              run(() => patch({ action: "download", allowDownload: v }), v ? t("downloadOn") : t("downloadOff"))
+            }
           />
         </div>
       </div>

@@ -3,18 +3,65 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { PURIFY_CONFIG, noteCss } from "@/lib/note";
-import type { Key } from "@/lib/i18n";
 import Sheet from "./Sheet";
 import { useT } from "./I18n";
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
-const clean = (html: string) => DOMPurify.sanitize(html, PURIFY_CONFIG) as string;
+/** 可选的文字颜色（黑色 = 默认） */
+const COLORS = ["#1c1c1e", "#8e8e93", "#ff3b30", "#ff9500", "#34c759", "#007aff", "#af52de"];
+
+const DROP_ATTRS = [
+  "face", "size", "color", "bgcolor", "background", "align", "valign", "width", "height",
+  "border", "cellpadding", "cellspacing", "dir",
+];
+
+/**
+ * 清理 HTML：
+ *  - 去掉脚本等危险内容（DOMPurify）
+ *  - 统一字体：去掉字体、字号、对齐、背景色；标题变成粗体段落
+ *  - 粘贴时（paste）连文字颜色也去掉：iPhone 暗色模式复制来的白色字会变回黑色
+ *  - 读取已保存的笔记时（stored）只保留文字颜色（用户自己设的）
+ */
+function sanitize(html: string, mode: "paste" | "stored"): string {
+  const frag = DOMPurify.sanitize(html, { ...PURIFY_CONFIG, RETURN_DOM_FRAGMENT: true }) as DocumentFragment;
+  for (const el of Array.from(frag.querySelectorAll("*"))) {
+    if (/^H[1-6]$/.test(el.tagName)) {
+      const p = document.createElement("p");
+      const b = document.createElement("strong");
+      b.append(...Array.from(el.childNodes));
+      p.append(b);
+      el.replaceWith(p);
+      continue;
+    }
+    const fontColor = el.tagName === "FONT" ? el.getAttribute("color") : null;
+    for (const a of DROP_ATTRS) el.removeAttribute(a);
+    el.removeAttribute("class");
+
+    let color = "";
+    if (mode === "stored") {
+      const m = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(el.getAttribute("style") ?? "");
+      color = m?.[1]?.trim() ?? fontColor ?? "";
+    }
+    if (color) el.setAttribute("style", `color: ${color}`);
+    else el.removeAttribute("style");
+
+    if (el.tagName === "FONT") {
+      const span = document.createElement("span");
+      if (color) span.setAttribute("style", `color: ${color}`);
+      span.append(...Array.from(el.childNodes));
+      el.replaceWith(span);
+    }
+  }
+  const box = document.createElement("div");
+  box.append(frag);
+  return box.innerHTML;
+}
 
 /** 从保存的笔记 HTML 文件里取出正文 */
 function bodyOf(fileHtml: string) {
   const doc = new DOMParser().parseFromString(fileHtml, "text/html");
-  return clean(doc.body.innerHTML);
+  return sanitize(doc.body.innerHTML, "stored");
 }
 
 const exec = (cmd: string, value?: string) => document.execCommand(cmd, false, value);
@@ -33,9 +80,9 @@ function elAtCaret(): Element | null {
 }
 
 /**
- * iOS 备忘录风格的笔记编辑器：
- * 标题 / 小标题 / 正文、粗体斜体下划线删除线、列表、清单、表格；
- * 粘贴 iOS 备忘录或邮件里的富文本（含表格）时保留格式，并去掉脚本等危险内容。
+ * 简单的笔记编辑器：白纸黑字、统一字体。
+ * 工具只有：全选、文字颜色、表格（加 / 删行列、删除表格）。
+ * 粘贴 iPhone 备忘录或邮件里的内容时保留表格和粗体，其余格式统一。
  */
 export default function NoteEditor({
   initialTitle = "",
@@ -50,14 +97,14 @@ export default function NoteEditor({
 }) {
   const t = useT();
   const editorRef = useRef<HTMLDivElement>(null);
+  const savedRange = useRef<Range | null>(null);
   const [title, setTitle] = useState(initialTitle);
   const [state, setState] = useState<"loading" | "ready" | "saving">(loadHtml ? "loading" : "ready");
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [inTable, setInTable] = useState(false);
-  const [active, setActive] = useState<Record<string, boolean>>({});
+  const [showColors, setShowColors] = useState(false);
 
-  // 读取已有笔记
   useEffect(() => {
     if (!loadHtml) {
       editorRef.current?.focus();
@@ -71,19 +118,14 @@ export default function NoteEditor({
       .catch((err) => setError((err as Error).message));
   }, [loadHtml]);
 
-  // 光标位置变化时：判断是否在表格里、哪些格式按钮处于选中状态
+  // 记住编辑器里的选区（点颜色按钮时不会丢），并判断光标是否在表格里
   useEffect(() => {
     const onSel = () => {
       const ed = editorRef.current;
       const sel = document.getSelection();
-      if (!ed || !sel || !sel.anchorNode || !ed.contains(sel.anchorNode)) return;
+      if (!ed || !sel?.rangeCount || !sel.anchorNode || !ed.contains(sel.anchorNode)) return;
+      savedRange.current = sel.getRangeAt(0).cloneRange();
       setInTable(!!currentCell());
-      setActive({
-        bold: document.queryCommandState("bold"),
-        italic: document.queryCommandState("italic"),
-        underline: document.queryCommandState("underline"),
-        strikeThrough: document.queryCommandState("strikeThrough"),
-      });
     };
     document.addEventListener("selectionchange", onSel);
     return () => document.removeEventListener("selectionchange", onSel);
@@ -105,41 +147,48 @@ export default function NoteEditor({
     sel?.addRange(range);
   }
 
-  /* ---------- 格式 ---------- */
+  function restoreSelection() {
+    const r = savedRange.current;
+    if (!r) return;
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(r);
+  }
 
-  const block = (tag: "h1" | "h2" | "p") => {
-    exec("formatBlock", tag);
-    changed();
-  };
-  const inline = (cmd: string) => {
-    exec(cmd);
-    changed();
-  };
+  /* ---------- 全选 / 颜色 ---------- */
 
-  function checklist() {
-    const ul = elAtCaret()?.closest("ul");
-    if (ul && ul.classList.contains("checklist")) {
-      exec("insertUnorderedList"); // 再按一次取消清单
-    } else {
-      if (!ul) exec("insertUnorderedList");
-      const el = elAtCaret();
-      const now = el?.closest("ul") ?? (el?.tagName === "UL" ? el : el?.querySelector("ul"));
-      now?.classList.add("checklist");
-    }
+  function selectAll() {
+    const ed = editorRef.current;
+    if (!ed) return;
+    ed.focus();
+    const range = document.createRange();
+    range.selectNodeContents(ed);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+
+  function applyColor(color: string) {
+    restoreSelection();
+    exec("styleWithCSS", "true");
+    exec("foreColor", color);
+    setShowColors(false);
     changed();
   }
+
+  /* ---------- 表格 ---------- */
 
   function insertTable() {
     const cells = (n: number) => Array.from({ length: n }, () => "<td><br></td>").join("");
     const html = `<table><tbody>${[1, 2, 3].map(() => `<tr>${cells(3)}</tr>`).join("")}</tbody></table><p><br></p>`;
-    // 光标在列表或表格里时，把新表格直接放到它后面，不拆开原来的列表
+    // 光标在列表或表格里时，把新表格直接放到它后面，不拆开原来的内容
     const container = elAtCaret()?.closest("ul,ol,table");
     if (container && editorRef.current?.contains(container)) {
       const tpl = document.createElement("template");
       tpl.innerHTML = html;
-      const table = tpl.content.querySelector("td")!;
+      const first = tpl.content.querySelector("td")!;
       container.after(tpl.content);
-      placeCaret(table);
+      placeCaret(first);
     } else {
       exec("insertHTML", html);
     }
@@ -147,34 +196,40 @@ export default function NoteEditor({
     changed();
   }
 
-  /* ---------- 表格编辑 ---------- */
-
-  function tableOp(op: "rowAdd" | "colAdd" | "rowDel" | "colDel" | "tableDel") {
+  function tableOp(op: "rowAdd" | "rowDel" | "colAdd" | "colDel" | "tableDel") {
     const cell = currentCell();
     if (!cell) return;
     const row = cell.parentElement as HTMLTableRowElement;
     const table = cell.closest("table") as HTMLTableElement;
     const col = cell.cellIndex;
+    const blank = (tag = "td") => Object.assign(document.createElement(tag), { innerHTML: "<br>" });
     if (op === "rowAdd") {
       const tr = document.createElement("tr");
-      for (let i = 0; i < row.cells.length; i++) tr.appendChild(Object.assign(document.createElement("td"), { innerHTML: "<br>" }));
+      for (let i = 0; i < row.cells.length; i++) tr.appendChild(blank());
       row.after(tr);
       placeCaret(tr.cells[Math.min(col, tr.cells.length - 1)]);
     } else if (op === "colAdd") {
       for (const tr of Array.from(table.rows)) {
         const ref = tr.cells[Math.min(col, tr.cells.length - 1)];
-        const td = document.createElement(ref?.tagName === "TH" ? "th" : "td");
-        td.innerHTML = "<br>";
+        const td = blank(ref?.tagName === "TH" ? "th" : "td");
         if (ref) ref.after(td);
         else tr.appendChild(td);
       }
       placeCaret(row.cells[col + 1]);
     } else if (op === "rowDel") {
       if (table.rows.length <= 1) table.remove();
-      else row.remove();
+      else {
+        // 删除后把光标放到相邻行的同一列，可以继续操作
+        const next = (row.nextElementSibling ?? row.previousElementSibling) as HTMLTableRowElement;
+        row.remove();
+        placeCaret(next.cells[Math.min(col, next.cells.length - 1)]);
+      }
     } else if (op === "colDel") {
       if (row.cells.length <= 1) table.remove();
-      else for (const tr of Array.from(table.rows)) tr.cells[col]?.remove();
+      else {
+        for (const tr of Array.from(table.rows)) tr.cells[col]?.remove();
+        placeCaret(row.cells[Math.min(col, row.cells.length - 1)]);
+      }
     } else {
       table.remove();
     }
@@ -182,13 +237,13 @@ export default function NoteEditor({
     changed();
   }
 
-  /* ---------- 粘贴：保留富文本和表格，清除危险内容 ---------- */
+  /* ---------- 粘贴 ---------- */
 
   function onPaste(e: React.ClipboardEvent) {
     const html = e.clipboardData.getData("text/html");
     if (html) {
       e.preventDefault();
-      exec("insertHTML", clean(html));
+      exec("insertHTML", sanitize(html, "paste"));
       changed();
       return;
     }
@@ -197,12 +252,19 @@ export default function NoteEditor({
       e.preventDefault();
       const reader = new FileReader();
       reader.onload = () => {
-        exec("insertHTML", clean(`<img src="${reader.result}">`));
+        exec("insertHTML", sanitize(`<img src="${reader.result}">`, "paste"));
         changed();
       };
       reader.readAsDataURL(img);
+      return;
     }
-    // 纯文本走浏览器默认行为
+    // 纯文本：按纯文本插入，不带任何格式
+    const text = e.clipboardData.getData("text/plain");
+    if (text) {
+      e.preventDefault();
+      exec("insertText", text);
+      changed();
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -218,16 +280,6 @@ export default function NoteEditor({
     }
   }
 
-  // 点清单前面的圆圈：勾选 / 取消
-  function onClick(e: React.MouseEvent) {
-    const li = (e.target as Element).closest?.("ul.checklist > li") as HTMLElement | null;
-    if (!li) return;
-    if (e.clientX - li.getBoundingClientRect().left < 30) {
-      li.classList.toggle("done");
-      changed();
-    }
-  }
-
   /* ---------- 保存 / 关闭 ---------- */
 
   const save = useCallback(async () => {
@@ -235,7 +287,7 @@ export default function NoteEditor({
     setState("saving");
     setError("");
     try {
-      await onSave(title.trim(), clean(editorRef.current.innerHTML));
+      await onSave(title.trim(), sanitize(editorRef.current.innerHTML, "stored"));
       setDirty(false);
       onClose();
     } catch (err) {
@@ -259,18 +311,8 @@ export default function NoteEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, [save, state]);
 
-  const Btn = ({ label, onPress, on, children }: { label: Key; onPress: () => void; on?: boolean; children: React.ReactNode }) => (
-    <button
-      type="button"
-      className={on ? "tb on" : "tb"}
-      title={t(label)}
-      aria-label={t(label)}
-      onMouseDown={(e) => e.preventDefault()} // 不让按钮抢走光标
-      onClick={onPress}
-    >
-      {children}
-    </button>
-  );
+  // 工具栏按钮：按下时不让编辑器失去光标
+  const keep = (e: React.MouseEvent) => e.preventDefault();
 
   return (
     <Sheet
@@ -302,51 +344,48 @@ export default function NoteEditor({
       />
 
       <div className="toolbar" role="toolbar">
-        <Btn label="fmtTitle" onPress={() => block("h1")}>
-          <b style={{ fontSize: 17 }}>T</b>
-        </Btn>
-        <Btn label="fmtHeading" onPress={() => block("h2")}>
-          <b style={{ fontSize: 14 }}>H</b>
-        </Btn>
-        <Btn label="fmtBody" onPress={() => block("p")}>
-          <span style={{ fontSize: 14 }}>¶</span>
-        </Btn>
+        <button type="button" className="tb text" onMouseDown={keep} onClick={selectAll}>
+          {t("selectAll")}
+        </button>
         <span className="tb-sep" />
-        <Btn label="fmtBold" on={active.bold} onPress={() => inline("bold")}>
-          <b>B</b>
-        </Btn>
-        <Btn label="fmtItalic" on={active.italic} onPress={() => inline("italic")}>
-          <i style={{ fontFamily: "Georgia, serif" }}>I</i>
-        </Btn>
-        <Btn label="fmtUnderline" on={active.underline} onPress={() => inline("underline")}>
-          <u>U</u>
-        </Btn>
-        <Btn label="fmtStrike" on={active.strikeThrough} onPress={() => inline("strikeThrough")}>
-          <s>S</s>
-        </Btn>
+        <button
+          type="button"
+          className={showColors ? "tb text on" : "tb text"}
+          onMouseDown={keep}
+          onClick={() => setShowColors((v) => !v)}
+        >
+          <span className="color-dot" /> {t("textColor")}
+        </button>
         <span className="tb-sep" />
-        <Btn label="fmtBullets" onPress={() => inline("insertUnorderedList")}>
-          •≡
-        </Btn>
-        <Btn label="fmtNumbers" onPress={() => inline("insertOrderedList")}>
-          1≡
-        </Btn>
-        <Btn label="fmtChecklist" onPress={checklist}>
-          ◯✓
-        </Btn>
-        <Btn label="fmtTable" onPress={insertTable}>
-          ⊞
-        </Btn>
+        <button type="button" className="tb text" onMouseDown={keep} onClick={insertTable}>
+          ⊞ {t("fmtTable")}
+        </button>
       </div>
+
+      {showColors && (
+        <div className="toolbar" role="toolbar" aria-label={t("textColor")}>
+          {COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="swatch"
+              style={{ background: c }}
+              aria-label={c}
+              onMouseDown={keep}
+              onClick={() => applyColor(c)}
+            />
+          ))}
+        </div>
+      )}
 
       {inTable && (
         <div className="toolbar table-tools" role="toolbar">
-          {(["rowAdd", "colAdd", "rowDel", "colDel", "tableDel"] as const).map((op) => (
+          {(["rowAdd", "rowDel", "colAdd", "colDel", "tableDel"] as const).map((op) => (
             <button
               key={op}
               type="button"
               className={op === "tableDel" ? "tb text danger" : "tb text"}
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={keep}
               onClick={() => tableOp(op)}
             >
               {t(op)}
@@ -366,7 +405,6 @@ export default function NoteEditor({
         onInput={changed}
         onPaste={onPaste}
         onKeyDown={onKeyDown}
-        onClick={onClick}
         spellCheck={false}
       />
     </Sheet>

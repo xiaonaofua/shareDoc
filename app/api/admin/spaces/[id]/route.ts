@@ -11,6 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * 编辑空间。action：
  *  - rename     { title }
  *  - access     { requirePin }
+ *  - download   { allowDownload }
  *  - regenerate               生成新链接（旧链接立即失效）
  */
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -31,6 +32,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     case "access":
       if (typeof body.requirePin !== "boolean") return bad("badParams");
       update = { require_pin: body.requirePin };
+      break;
+    case "download":
+      if (typeof body.allowDownload !== "boolean") return bad("badParams");
+      update = { allow_download: body.allowDownload };
       break;
     case "regenerate":
       update = { token: newToken() };

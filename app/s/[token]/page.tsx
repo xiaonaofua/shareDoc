@@ -41,7 +41,7 @@ export default async function SpacePage({ params }: { params: Promise<{ token: s
         <LangSwitch compact />
       </div>
       <div className="large-title">{space.title}</div>
-      <SpaceGrid token={token} docs={docs} thumbs={thumbs} />
+      <SpaceGrid token={token} docs={docs} thumbs={thumbs} downloadable={space.allow_download === true} />
     </main>
   );
 }

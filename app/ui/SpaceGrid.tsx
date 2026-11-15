@@ -8,10 +8,12 @@ export default async function SpaceGrid({
   token,
   docs,
   thumbs,
+  downloadable,
 }: {
   token: string;
   docs: DocumentRow[];
   thumbs: Map<string, string>;
+  downloadable: boolean;
 }) {
   const { t } = await getT();
   if (docs.length === 0) {
@@ -37,6 +39,9 @@ export default async function SpaceGrid({
               )}
             </div>
             <div className="item-name">{d.title}</div>
+            <span className={downloadable ? "state-tag dl" : "state-tag view"}>
+              {downloadable ? t("badgeDownload") : t("badgeViewOnly")}
+            </span>
           </a>
         );
       })}

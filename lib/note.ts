@@ -8,6 +8,7 @@ const CHECK_SVG =
 export function noteCss(s: string) {
   return `
 ${s}{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","PingFang SC","Hiragino Sans","Noto Sans CJK SC",sans-serif;font-size:17px;line-height:1.55;color:#1c1c1e;background:#fff;word-wrap:break-word}
+${s} *{font-family:inherit !important;font-size:inherit}
 ${s} h1{font-size:28px;font-weight:700;line-height:1.25;margin:.3em 0 .4em}
 ${s} h2{font-size:21px;font-weight:600;line-height:1.3;margin:.8em 0 .3em}
 ${s} h3{font-size:18px;font-weight:600;margin:.8em 0 .3em}

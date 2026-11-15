@@ -57,7 +57,16 @@ async function Preview({ doc, t }: { doc: DocumentRow; t: T }) {
 }
 
 /** 访问者看到的文档页：只能浏览，没有下载按钮 */
-export async function DocViewer({ doc, back }: { doc: DocumentRow; back?: { href: string; label: string } }) {
+export async function DocViewer({
+  doc,
+  back,
+  downloadHref,
+}: {
+  doc: DocumentRow;
+  back?: { href: string; label: string };
+  /** 只有开启“允许下载”时才传，才显示下载按钮 */
+  downloadHref?: string;
+}) {
   const { lang, t } = await getT();
   return (
     <main style={{ maxWidth: 1100 }}>
@@ -70,7 +79,14 @@ export async function DocViewer({ doc, back }: { doc: DocumentRow; back?: { href
         <span style={{ flex: 1 }} />
         <LangSwitch compact />
       </div>
-      <div className="viewer-title">{doc.title}</div>
+      <div className="spread-row">
+        <div className="viewer-title">{doc.title}</div>
+        {downloadHref && (
+          <a className="btn filled small" href={downloadHref}>
+            {t("download")}
+          </a>
+        )}
+      </div>
       <div className="muted">
         {formatSize(doc.size_bytes)} · {t("availableUntil", { date: formatDateFor(lang, doc.expires_at) })}
       </div>

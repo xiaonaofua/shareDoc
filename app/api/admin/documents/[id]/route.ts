@@ -26,6 +26,7 @@ async function ownDoc(id: string, ownerId: string) {
  *  - replace    { path, originalName }  替换文件（链接不变）
  *  - extend                         有效期重新计为 N 天
  *  - access     { requirePin }     切换是否需要密码
+ *  - download   { allowDownload }  切换是否允许访问者下载
  *  - space      { spaceId|null }   放入空间 / 移出空间
  *  - regenerate                     生成新链接（旧链接立即失效）
  */
@@ -69,6 +70,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     case "access":
       if (typeof body.requirePin !== "boolean") return bad("badParams");
       update = { require_pin: body.requirePin };
+      break;
+    case "download":
+      if (typeof body.allowDownload !== "boolean") return bad("badParams");
+      update = { allow_download: body.allowDownload };
       break;
     case "space": {
       const space = await ownSpaceId(admin.id, body.spaceId);

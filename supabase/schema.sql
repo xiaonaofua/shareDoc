@@ -31,6 +31,8 @@ create table if not exists public.sharedoc_documents (
 );
 -- 已经建过表的项目：补上新增的列
 alter table public.sharedoc_documents add column if not exists require_pin boolean not null default true;
+alter table public.sharedoc_documents add column if not exists allow_download boolean not null default false;
+alter table public.sharedoc_spaces    add column if not exists allow_download boolean not null default false;
 alter table public.sharedoc_documents add column if not exists space_id uuid
   references public.sharedoc_spaces(id) on delete set null;
 create index if not exists sharedoc_documents_owner_idx   on public.sharedoc_documents(owner_id);

@@ -27,5 +27,5 @@ export default async function SharedDocPage({ params }: { params: Promise<{ toke
     }
   }
 
-  return <DocViewer doc={doc} />;
+  return <DocViewer doc={doc} downloadHref={doc.allow_download ? `/api/d/${token}/file` : undefined} />;
 }

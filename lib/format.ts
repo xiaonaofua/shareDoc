@@ -13,6 +13,8 @@ export type DocumentRow = {
   expires_at: string;
   /** false = 不需要密码，任何拿到链接的人都能看（列不存在时按 true 处理） */
   require_pin?: boolean;
+  /** true = 访问者可以下载（列不存在时按“仅查看”处理） */
+  allow_download?: boolean;
   /** 所属空间（可为空） */
   space_id?: string | null;
 };
@@ -23,6 +25,7 @@ export type SpaceRow = {
   token: string;
   title: string;
   require_pin: boolean;
+  allow_download?: boolean;
   created_at: string;
   updated_at: string;
 };
