@@ -4,6 +4,8 @@ import { formatDate, formatSize, type DocumentRow } from "./format";
 import { adminDb } from "./supabase";
 import { decodeText } from "./text";
 import { TextPreview } from "./text-preview";
+import PdfViewer from "@/app/ui/PdfViewer";
+import { ChevronLeft } from "@/app/ui/icons";
 
 const TEXT_PREVIEW_BYTES = 1024 * 1024; // 文本预览最多显示前 1MB
 
@@ -24,7 +26,7 @@ async function Preview({ doc }: { doc: DocumentRow }) {
   const kind = kindOf(doc.file_path);
 
   if (kind === "word" || kind === "excel" || kind === "ppt") {
-    if (!ENABLE_OFFICE_PREVIEW) return <p className="muted">在线预览已关闭，请下载后查看。</p>;
+    if (!ENABLE_OFFICE_PREVIEW) return <p className="muted" style={{ marginTop: 24 }}>在线预览已关闭。</p>;
     const url = await signedUrl(doc.file_path, 30 * 60);
     if (!url) return null;
     const src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
@@ -33,7 +35,7 @@ async function Preview({ doc }: { doc: DocumentRow }) {
 
   if (kind === "pdf") {
     const url = await signedUrl(doc.file_path, 60 * 60);
-    return url ? <iframe className="preview" src={url} title={doc.title} /> : null;
+    return url ? <PdfViewer url={url} /> : null;
   }
 
   if (kind === "image") {
@@ -44,55 +46,39 @@ async function Preview({ doc }: { doc: DocumentRow }) {
 
   if (kind === "text" || kind === "markdown" || kind === "html") {
     const res = await readText(doc.file_path);
-    if (!res) return <p className="muted">文件暂时无法读取，请下载查看。</p>;
+    if (!res) return <p className="muted">文件暂时无法读取。</p>;
     return <TextPreview kind={kind} text={res.text} truncated={res.truncated} title={doc.title} />;
   }
 
-  return <p className="muted">这种格式不支持在线预览，请下载后查看。</p>;
+  return <p className="muted" style={{ marginTop: 24 }}>这种格式暂时无法在网页上浏览。</p>;
 }
 
-export async function DocViewer({
-  doc,
-  downloadHref,
-  back,
-}: {
-  doc: DocumentRow;
-  downloadHref: string;
-  back?: { href: string; label: string };
-}) {
+/** 访问者看到的文档页：只能浏览，没有下载按钮 */
+export async function DocViewer({ doc, back }: { doc: DocumentRow; back?: { href: string; label: string } }) {
   return (
-    <main className="wide">
-      {back && (
-        <a className="back-link" href={back.href}>
-          ← {back.label}
-        </a>
-      )}
-      <div className="card">
-        <div className="spread">
-          <div>
-            <h1 style={{ marginBottom: 4, wordBreak: "break-all" }}>{doc.title}</h1>
-            <div className="muted">
-              {doc.original_name} · {formatSize(doc.size_bytes)} · 有效期至 {formatDate(doc.expires_at)}
-            </div>
-          </div>
-          <a className="btn primary" href={downloadHref}>
-            下载
+    <main style={{ maxWidth: 1100 }}>
+      <div className="viewer-bar">
+        {back && (
+          <a className="icon-btn" href={back.href} style={{ marginLeft: -10 }}>
+            <ChevronLeft /> <span style={{ marginLeft: 4 }}>{back.label}</span>
           </a>
-        </div>
+        )}
+      </div>
+      <div className="viewer-title">{doc.title}</div>
+      <div className="muted">
+        {formatSize(doc.size_bytes)} · {formatDate(doc.expires_at)} 前可查看
       </div>
       <Preview doc={doc} />
     </main>
   );
 }
 
-/** 密码页、未设置密码页的通用外框 */
-export function CenterCard({ title, children }: { title: string; children: React.ReactNode }) {
+/** 提示页（未设置密码等） */
+export function Notice({ title, text }: { title: string; text: string }) {
   return (
-    <main>
-      <div className="card center">
-        <h1>{title}</h1>
-        {children}
-      </div>
-    </main>
+    <div className="center-screen">
+      <h1>{title}</h1>
+      <p className="muted">{text}</p>
+    </div>
   );
 }

@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import PinForm from "@/app/components/PinForm";
+import PinPad from "@/app/ui/PinPad";
 import { findSharedDoc } from "@/lib/docs";
 import { needsPin } from "@/lib/format";
 import { checkUnlockCookie, unlockCookieName } from "@/lib/security";
-import { CenterCard, DocViewer } from "@/lib/viewer";
+import { DocViewer, Notice } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
@@ -16,23 +16,12 @@ export default async function SharedDocPage({ params }: { params: Promise<{ toke
   const { doc, pinHash } = found;
 
   if (needsPin(doc)) {
-    if (!pinHash) {
-      return (
-        <CenterCard title="暂时无法查看">
-          <p className="muted">文档所有者尚未设置查看密码。</p>
-        </CenterCard>
-      );
-    }
+    if (!pinHash) return <Notice title="暂时无法查看" text="文档所有者尚未设置查看密码。" />;
     const store = await cookies();
     if (!checkUnlockCookie(store.get(unlockCookieName(token))?.value, token, pinHash)) {
-      return (
-        <CenterCard title="请输入查看密码">
-          <p className="muted">此文档受 4 位数字密码保护。</p>
-          <PinForm action={`/api/d/${token}/unlock`} />
-        </CenterCard>
-      );
+      return <PinPad action={`/api/d/${token}/unlock`} title={doc.title} />;
     }
   }
 
-  return <DocViewer doc={doc} downloadHref={`/api/d/${token}/file`} />;
+  return <DocViewer doc={doc} />;
 }
