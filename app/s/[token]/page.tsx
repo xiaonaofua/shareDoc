@@ -6,6 +6,8 @@ import { kindOf } from "@/lib/filetypes";
 import { spaceAccess } from "@/lib/space-access";
 import { adminDb } from "@/lib/supabase";
 import { Notice } from "@/lib/viewer";
+import { getT } from "@/lib/i18n-server";
+import { LangSwitch } from "@/app/ui/I18n";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,10 @@ export default async function SpacePage({ params }: { params: Promise<{ token: s
   if (!access) notFound();
   const { space, docs, status } = access;
 
-  if (status === "nopin") return <Notice title="暂时无法查看" text="空间所有者尚未设置查看密码。" />;
+  if (status === "nopin") {
+    const { t } = await getT();
+    return <Notice title={t("unavailable")} text={t("ownerNoPin")} />;
+  }
   if (status === "pin") return <PinPad action={`/api/s/${token}/unlock`} title={space.title} />;
 
   // 图片显示缩略图
@@ -31,7 +36,11 @@ export default async function SpacePage({ params }: { params: Promise<{ token: s
 
   return (
     <main>
-      <div className="large-title" style={{ marginTop: 20 }}>{space.title}</div>
+      <div className="viewer-bar" style={{ minHeight: 44 }}>
+        <span style={{ flex: 1 }} />
+        <LangSwitch compact />
+      </div>
+      <div className="large-title">{space.title}</div>
       <SpaceGrid token={token} docs={docs} thumbs={thumbs} />
     </main>
   );

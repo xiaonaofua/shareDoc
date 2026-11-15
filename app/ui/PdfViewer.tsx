@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useT } from "./I18n";
 
 /**
  * 用 pdf.js 把 PDF 逐页画成图片显示。
  * 不用浏览器自带的 PDF 阅读器：那个会带下载按钮，安卓上还会直接变成下载。
  */
 export default function PdfViewer({ url }: { url: string }) {
+  const t = useT();
   const box = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [progress, setProgress] = useState("");
@@ -56,8 +58,8 @@ export default function PdfViewer({ url }: { url: string }) {
 
   return (
     <>
-      {state === "loading" && <p className="muted" style={{ textAlign: "center", marginTop: 40 }}>正在加载…</p>}
-      {state === "error" && <p className="muted" style={{ textAlign: "center", marginTop: 40 }}>PDF 暂时无法显示。</p>}
+      {state === "loading" && <p className="muted" style={{ textAlign: "center", marginTop: 40 }}>{t("pdfLoading")}</p>}
+      {state === "error" && <p className="muted" style={{ textAlign: "center", marginTop: 40 }}>{t("pdfError")}</p>}
       <div ref={box} className="pdf-pages" />
       {progress && <p className="muted" style={{ textAlign: "center" }}>{progress}</p>}
     </>

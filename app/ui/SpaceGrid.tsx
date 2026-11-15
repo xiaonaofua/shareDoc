@@ -1,8 +1,10 @@
 import type { DocumentRow } from "@/lib/format";
 import { FileIcon, TrayIcon } from "./icons";
+import { getT } from "@/lib/i18n-server";
+import { isNoteName } from "@/lib/filetypes";
 
 /** 访问者看到的空间：文件像桌面图标一样平铺，图片显示缩略图 */
-export default function SpaceGrid({
+export default async function SpaceGrid({
   token,
   docs,
   thumbs,
@@ -11,11 +13,12 @@ export default function SpaceGrid({
   docs: DocumentRow[];
   thumbs: Map<string, string>;
 }) {
+  const { t } = await getT();
   if (docs.length === 0) {
     return (
       <div className="empty">
         <TrayIcon />
-        <div>空文件夹</div>
+        <div>{t("emptyFolder")}</div>
       </div>
     );
   }
@@ -30,7 +33,7 @@ export default function SpaceGrid({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img className="thumb-img" src={thumb} alt="" loading="lazy" />
               ) : (
-                <FileIcon name={d.file_path} size={70} />
+                <FileIcon name={d.file_path} note={isNoteName(d.original_name)} size={70} />
               )}
             </div>
             <div className="item-name">{d.title}</div>

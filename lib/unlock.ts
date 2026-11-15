@@ -12,18 +12,18 @@ import {
 
 /** 文档和空间共用的“输入 4 位密码”处理（含错误次数限制） */
 export async function handleUnlock(req: Request, key: string, pinHash: string | null) {
-  if (!pinHash) return NextResponse.json({ error: "未找到" }, { status: 404 });
+  if (!pinHash) return NextResponse.json({ error: "notFound" }, { status: 404 });
 
   const ip = clientIp(req.headers);
   const wait = await lockedMinutes(key, ip);
   if (wait > 0) {
-    return NextResponse.json({ error: `错误次数过多，请 ${wait} 分钟后再试` }, { status: 429 });
+    return NextResponse.json({ error: "tooManyAttempts", vars: { n: wait } }, { status: 429 });
   }
 
   const { pin } = await req.json().catch(() => ({ pin: null }));
   if (!isValidPin(pin) || !verifyPin(pin, pinHash)) {
     await recordFailure(key, ip);
-    return NextResponse.json({ error: "密码不正确" }, { status: 401 });
+    return NextResponse.json({ error: "wrongPin" }, { status: 401 });
   }
 
   await clearFailures(key, ip);

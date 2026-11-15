@@ -489,3 +489,65 @@ button.cell:active { background: var(--fill); }
   text-align: center;
 }
 .toast.error { background: var(--red); border-radius: 14px; }
+
+/* 语言切换（访问者页面角落的小下拉框） */
+.lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: var(--fill);
+  color: var(--label);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  text-align: center;
+}
+.corner { position: absolute; top: 12px; right: 16px; }
+.seg-label { align-self: center; font-size: 12px; color: var(--label-2); padding: 0 6px 0 8px; }
+
+/* ===== 笔记编辑器 ===== */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 4px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  scrollbar-width: none;
+  flex: none;
+}
+.toolbar::-webkit-scrollbar { display: none; }
+.tb {
+  flex: none;
+  min-width: 40px;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--label);
+  font-size: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tb:hover { background: var(--fill); }
+.tb.on { background: var(--fill-strong); }
+.tb.text { font-size: 14px; color: var(--blue); }
+.tb.text.danger { color: var(--red); }
+.tb-sep { flex: none; width: 1px; height: 20px; background: var(--separator); margin: 0 4px; }
+.table-tools { background: color-mix(in srgb, var(--blue) 10%, var(--bg-elevated)); }
+/* 笔记纸张：无论深色还是浅色模式，都是白纸黑字，粘贴进来的颜色才看得清 */
+.note-paper {
+  flex: 1;
+  min-height: 45vh;
+  overflow: auto;
+  padding: 18px 18px 40px;
+  border-radius: 12px;
+  outline: none;
+  box-shadow: var(--shadow);
+}
+.note-paper:empty::before { content: attr(data-placeholder); color: #aeaeb2; pointer-events: none; }

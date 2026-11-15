@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LockGlyph } from "./icons";
+import { LangSwitch, useT } from "./I18n";
+import { errorText } from "@/lib/i18n";
 
 /** iOS 锁屏风格的 4 位密码键盘；输满 4 位自动提交，也支持实体键盘输入 */
 export default function PinPad({ action, title }: { action: string; title: string }) {
   const router = useRouter();
+  const t = useT();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
@@ -26,14 +29,14 @@ export default function PinPad({ action, title }: { action: string; title: strin
         return;
       }
       setBusy(false);
-      setError(body.error ?? "出错了，请稍后再试");
+      setError(errorText(t, body));
       setShake(true);
       setTimeout(() => {
         setShake(false);
         setPin("");
       }, 400);
     },
-    [action, router],
+    [action, router, t],
   );
 
   const press = useCallback(
@@ -62,9 +65,12 @@ export default function PinPad({ action, title }: { action: string; title: strin
 
   return (
     <div className="center-screen">
+      <div className="corner">
+        <LangSwitch compact />
+      </div>
       <LockGlyph size={26} />
       <h1>{title}</h1>
-      <div className="muted">{error || "输入密码"}</div>
+      <div className="muted">{error || t("enterPasscode")}</div>
       <div className={shake ? "pin-dots shake" : "pin-dots"} aria-live="polite">
         {[0, 1, 2, 3].map((i) => (
           <span key={i} className={i < pin.length ? "on" : ""} />
@@ -80,7 +86,7 @@ export default function PinPad({ action, title }: { action: string; title: strin
         <button className="key" onClick={() => press("0")} disabled={busy}>
           0
         </button>
-        <button className="key plain" onClick={back} disabled={busy || !pin} aria-label="删除">
+        <button className="key plain" onClick={back} disabled={busy || !pin} aria-label={t("deleteKey")}>
           ⌫
         </button>
       </div>

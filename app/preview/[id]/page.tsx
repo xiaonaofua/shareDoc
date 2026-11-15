@@ -3,6 +3,7 @@ import { getAdmin } from "@/lib/auth";
 import type { DocumentRow } from "@/lib/format";
 import { adminDb } from "@/lib/supabase";
 import { DocViewer } from "@/lib/viewer";
+import { getT } from "@/lib/i18n-server";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,8 @@ export default async function AdminPreview({ params }: { params: Promise<{ id: s
   if (!doc) notFound();
 
   // 返回时回到文件所在的文件夹
-  let back = { href: "/", label: "文件" };
+  const { t } = await getT();
+  let back = { href: "/", label: t("files") };
   if (doc.space_id) {
     const { data: space } = await db
       .from("sharedoc_spaces")

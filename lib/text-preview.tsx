@@ -14,13 +14,15 @@ export async function TextPreview({
   text,
   truncated,
   title,
+  truncatedText,
 }: {
   kind: "text" | "markdown" | "html";
   text: string;
   truncated: boolean;
   title: string;
+  truncatedText: string;
 }) {
-  const note = truncated ? <p className="muted">文件较大，只显示前 1MB，完整内容请下载。</p> : null;
+  const note = truncated ? <p className="muted">{truncatedText}</p> : null;
   if (kind === "text") {
     return (
       <>

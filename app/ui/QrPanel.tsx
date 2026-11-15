@@ -2,17 +2,19 @@
 
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import type { Key } from "@/lib/i18n";
+import { useT } from "./I18n";
 
 type Level = "L" | "M" | "Q" | "H";
 
-const SIZES = [
-  { label: "小 200", value: 200 },
-  { label: "中 400", value: 400 },
-  { label: "大 800", value: 800 },
+const SIZES: { label: Key; value: number }[] = [
+  { label: "qrSmall", value: 200 },
+  { label: "qrMedium", value: 400 },
+  { label: "qrLarge", value: 800 },
 ];
 
 const LEVELS: { label: string; value: Level }[] = [
-  { label: "容错 7%", value: "L" },
+  { label: "7%", value: "L" },
   { label: "15%", value: "M" },
   { label: "25%", value: "Q" },
   { label: "30%", value: "H" },
@@ -20,6 +22,7 @@ const LEVELS: { label: string; value: Level }[] = [
 
 /** 在浏览器本地生成二维码，链接不会发送到任何外部网站 */
 export default function QrPanel({ link, title }: { link: string; title: string }) {
+  const t = useT();
   const [size, setSize] = useState(400);
   const [level, setLevel] = useState<Level>("H");
   const [png, setPng] = useState("");
@@ -45,15 +48,16 @@ export default function QrPanel({ link, title }: { link: string; title: string }
 
   return (
     <div className="qr-panel">
-      {png && <img className="qr-img" src={png} alt={`${title} 的二维码`} style={{ width: size }} />}
-      <div className="segmented" role="group" aria-label="尺寸">
+      {png && <img className="qr-img" src={png} alt={`QR: ${title}`} style={{ width: size }} />}
+      <div className="segmented" role="group" aria-label="Size">
         {SIZES.map((s) => (
           <button key={s.value} className={size === s.value ? "on" : ""} onClick={() => setSize(s.value)}>
-            {s.label}
+            {t(s.label)}
           </button>
         ))}
       </div>
-      <div className="segmented" role="group" aria-label="纠错等级">
+      <div className="segmented" role="group" aria-label={t("qrEcc")}>
+        <span className="seg-label">{t("qrEcc")}</span>
         {LEVELS.map((l) => (
           <button key={l.value} className={level === l.value ? "on" : ""} onClick={() => setLevel(l.value)}>
             {l.label}
@@ -62,10 +66,10 @@ export default function QrPanel({ link, title }: { link: string; title: string }
       </div>
       <div style={{ display: "flex", gap: 10, width: "100%" }}>
         <a className="btn filled" style={{ flex: 1 }} href={png} download={`${fileBase}.png`}>
-          保存 PNG
+          {t("savePng")}
         </a>
         <a className="btn" style={{ flex: 1 }} href={svg} download={`${fileBase}.svg`}>
-          保存 SVG
+          {t("saveSvg")}
         </a>
       </div>
     </div>

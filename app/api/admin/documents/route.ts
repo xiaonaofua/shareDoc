@@ -13,11 +13,11 @@ export async function POST(req: Request) {
 
   const { path, title, originalName, requirePin, spaceId } = await req.json().catch(() => ({}));
   const uploaded = await verifyUploaded(admin.id, path);
-  if (!uploaded) return bad("找不到已上传的文件");
+  if (!uploaded) return bad("uploadMissing");
   const name = typeof originalName === "string" && originalName.trim() ? originalName.trim().slice(0, 200) : path;
   const ext = extOf(path)!;
   const space = await ownSpaceId(admin.id, spaceId);
-  if (space === undefined) return bad("空间不存在");
+  if (space === undefined) return bad("folderMissing");
 
   const { data, error } = await adminDb()
     .from("sharedoc_documents")
@@ -37,6 +37,6 @@ export async function POST(req: Request) {
     })
     .select("id")
     .single();
-  if (error) return bad("保存失败", 500);
+  if (error) return bad("saveFailed", 500);
   return NextResponse.json({ id: data.id });
 }

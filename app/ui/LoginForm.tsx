@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { FolderIcon } from "./icons";
+import { LangSwitch, useT } from "./I18n";
+import { errorText } from "@/lib/i18n";
 
 export default function LoginForm() {
+  const t = useT();
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -23,12 +26,15 @@ export default function LoginForm() {
       return;
     }
     const body = await res.json().catch(() => ({}));
-    setError(body.error ?? "登录失败");
+    setError(errorText(t, body, "loginFailed"));
     setBusy(false);
   }
 
   return (
     <div className="center-screen">
+      <div className="corner">
+        <LangSwitch compact />
+      </div>
       <FolderIcon size={88} />
       <h1>Doc Share</h1>
       <form className="login-box" onSubmit={submit}>
@@ -36,7 +42,7 @@ export default function LoginForm() {
           <input
             className="field"
             type="text"
-            placeholder="ID"
+            placeholder={t("idPh")}
             autoComplete="username"
             autoCapitalize="off"
             value={id}
@@ -47,7 +53,7 @@ export default function LoginForm() {
           <input
             className="field"
             type="password"
-            placeholder="密码"
+            placeholder={t("passwordPh")}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -55,7 +61,7 @@ export default function LoginForm() {
           />
         </div>
         <button className="btn filled block" disabled={busy || !id || !password}>
-          {busy ? "登录中…" : "登录"}
+          {busy ? t("loggingIn") : t("login")}
         </button>
         {error && <p className="error">{error}</p>}
       </form>

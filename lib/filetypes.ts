@@ -28,7 +28,7 @@ export const FILE_TYPES: Record<string, { mime: string; kind: Kind }> = {
 
 export const EXTENSIONS = Object.keys(FILE_TYPES);
 export const ACCEPT = EXTENSIONS.map((e) => `.${e}`).join(",");
-export const SUPPORTED_LABEL = "Word / Excel / PowerPoint / PDF / TXT / CSV / MD / HTML / RTF / 图片";
+export const SUPPORTED_LABEL = "Word / Excel / PowerPoint / PDF / TXT / CSV / MD / HTML / RTF / PNG / JPG / GIF / BMP / WEBP";
 
 export function extOf(name: string): string | null {
   const ext = /\.([a-z0-9]+)$/i.exec(name)?.[1]?.toLowerCase();
@@ -49,3 +49,8 @@ export const KIND_STYLE: Record<Kind, { color: string }> = {
   html: { color: "#e44d26" },
   other: { color: "#6b7280" },
 };
+
+/** 笔记：用富文本编辑器创建，保存为 HTML，原始文件名以 .note.html 结尾 */
+export const NOTE_SUFFIX = ".note.html";
+export const isNoteName = (originalName: string) => originalName.toLowerCase().endsWith(NOTE_SUFFIX);
+export const NOTE_COLOR = "#e0a800";

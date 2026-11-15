@@ -10,13 +10,13 @@ export async function POST(req: Request) {
 
   const { title, requirePin } = await req.json().catch(() => ({}));
   const name = typeof title === "string" ? title.trim().slice(0, 100) : "";
-  if (!name) return bad("请输入空间名称");
+  if (!name) return bad("nameRequired");
 
   const { data, error } = await adminDb()
     .from("sharedoc_spaces")
     .insert({ owner_id: admin.id, token: newToken(), title: name, require_pin: requirePin !== false })
     .select("id")
     .single();
-  if (error) return bad("保存失败", 500);
+  if (error) return bad("saveFailed", 500);
   return NextResponse.json({ id: data.id });
 }

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { ACCEPT, FILE_TYPES, SUPPORTED_LABEL, extOf, kindOf } from "@/lib/filetypes";
+import { ACCEPT, FILE_TYPES, NOTE_SUFFIX, SUPPORTED_LABEL, extOf, isNoteName, kindOf } from "@/lib/filetypes";
 import { daysLeft, formatSize, needsPin, type DocumentRow, type SpaceRow } from "@/lib/format";
+import { wrapNote } from "@/lib/note";
 import {
   ChevronLeft,
   ChevronRight,
@@ -17,6 +18,8 @@ import {
   ShareIcon,
   TrayIcon,
 } from "@/app/ui/icons";
+import { LangSwitch, useApi, useT } from "@/app/ui/I18n";
+import NoteEditor from "@/app/ui/NoteEditor";
 import QrPanel from "@/app/ui/QrPanel";
 import Sheet, { Switch } from "@/app/ui/Sheet";
 
@@ -39,26 +42,27 @@ type SheetState =
   | { type: "space"; id: string }
   | { type: "add" }
   | { type: "newFolder" }
-  | { type: "newText" }
-  | { type: "editText"; id: string }
+  | { type: "newNote" }
+  | { type: "edit"; id: string }
   | { type: "settings" }
   | null;
 
-async function api(url: string, method: string, body?: unknown) {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error ?? `请求失败 (${res.status})`);
-  return json;
-}
+type Api = ReturnType<typeof useApi>;
+type Notify = (text: string, error?: boolean) => void;
 
-const isEditable = (d: DocumentRow) => ["text", "markdown"].includes(kindOf(d.file_path));
+const isNote = (d: DocumentRow) => isNoteName(d.original_name);
+const isPlainEditable = (d: DocumentRow) => !isNote(d) && ["text", "markdown"].includes(kindOf(d.file_path));
 const baseName = (n: string) => n.replace(/\.[^.]+$/, "");
+const safeName = (n: string) => n.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100);
+
+/** 文本存成 UTF-8（带 BOM，Windows 记事本旧版本也能正确识别） */
+const textFile = (text: string, name: string) => new File(["﻿" + text], name, { type: "text/plain" });
+const noteFile = (title: string, body: string, name: string) =>
+  new File([wrapNote(title, body)], name, { type: "text/html" });
 
 export default function AdminClient(props: Props) {
+  const t = useT();
+  const api = useApi();
   const router = useRouter();
   const refresh = useCallback(() => router.refresh(), [router]);
   const supabase = useMemo(
@@ -88,7 +92,7 @@ export default function AdminClient(props: Props) {
     setFolderId(id);
   };
 
-  const notify = useCallback((text: string, error = false) => {
+  const notify: Notify = useCallback((text, error = false) => {
     setToast({ text, error });
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), error ? 5000 : 2200);
@@ -98,30 +102,32 @@ export default function AdminClient(props: Props) {
   const uploadFile = useCallback(
     async (file: File): Promise<string> => {
       const ext = extOf(file.name);
-      if (!ext) throw new Error(`「${file.name}」格式不支持（支持 ${SUPPORTED_LABEL}）`);
-      if (file.size > props.maxFileBytes) {
-        throw new Error(`「${file.name}」超过 ${Math.round(props.maxFileBytes / 1024 / 1024)} MB`);
-      }
+      if (!ext) throw new Error(t("unsupportedFile", { name: file.name, types: SUPPORTED_LABEL }));
+      const mb = Math.round(props.maxFileBytes / 1024 / 1024);
+      if (file.size > props.maxFileBytes) throw new Error(t("fileTooLargeName", { name: file.name, mb }));
       const { path, token } = await api("/api/admin/upload-url", "POST", { fileName: file.name, size: file.size });
       const { error } = await supabase.storage
         .from(BUCKET)
         .uploadToSignedUrl(path, token, file, { contentType: FILE_TYPES[ext].mime });
-      if (error) throw new Error(`「${file.name}」上传失败：${error.message}`);
+      if (error) throw new Error(t("uploadFailed", { name: file.name, msg: error.message }));
       return path;
     },
-    [supabase, props.maxFileBytes],
+    [supabase, props.maxFileBytes, api, t],
   );
+
+  const requirePinFirst = useCallback(() => {
+    if (props.hasPin) return false;
+    notify(t("needPinFirst"), true);
+    setSheet({ type: "settings" });
+    return true;
+  }, [props.hasPin, notify, t]);
 
   const uploadMany = useCallback(
     async (files: File[], spaceId: string | null) => {
-      if (!props.hasPin) {
-        notify("请先在设置里设定查看密码", true);
-        setSheet({ type: "settings" });
-        return;
-      }
+      if (requirePinFirst()) return;
       const failed: string[] = [];
       for (const [i, f] of files.entries()) {
-        notify(`正在上传 ${i + 1}/${files.length}…`);
+        notify(t("uploading", { i: i + 1, n: files.length }));
         try {
           const path = await uploadFile(f);
           await api("/api/admin/documents", "POST", {
@@ -137,16 +143,16 @@ export default function AdminClient(props: Props) {
       }
       refresh();
       if (failed.length) notify(failed.join("；"), true);
-      else notify(files.length > 1 ? `已上传 ${files.length} 个文件` : "已上传");
+      else notify(files.length > 1 ? t("uploadedN", { n: files.length }) : t("uploaded"));
     },
-    [props.hasPin, uploadFile, refresh, notify],
+    [requirePinFirst, uploadFile, refresh, notify, api, t],
   );
 
   async function moveDoc(docId: string, spaceId: string | null) {
     try {
       await api(`/api/admin/documents/${docId}`, "PATCH", { action: "space", spaceId });
       refresh();
-      notify(spaceId ? "已移入文件夹" : "已移出文件夹");
+      notify(spaceId ? t("movedIn") : t("movedOut"));
     } catch (err) {
       notify((err as Error).message, true);
     }
@@ -191,7 +197,8 @@ export default function AdminClient(props: Props) {
   const counts = new Map<string, number>();
   for (const d of props.docs) if (d.space_id) counts.set(d.space_id, (counts.get(d.space_id) ?? 0) + 1);
   const visibleDocs = props.docs.filter((d) => (folder ? d.space_id === folder.id : !d.space_id));
-  const sheetDoc = sheet && (sheet.type === "doc" || sheet.type === "editText") ? props.docs.find((d) => d.id === sheet.id) : null;
+  const sheetDoc =
+    sheet && (sheet.type === "doc" || sheet.type === "edit") ? props.docs.find((d) => d.id === sheet.id) : null;
   const sheetSpace = sheet?.type === "space" ? props.spaces.find((s) => s.id === sheet.id) : null;
   const close = () => setSheet(null);
 
@@ -202,7 +209,7 @@ export default function AdminClient(props: Props) {
       e.preventDefault();
       setDropTarget(key);
     },
-    onDragLeave: () => setDropTarget((t) => (t === key ? null : t)),
+    onDragLeave: () => setDropTarget((v) => (v === key ? null : v)),
     onDrop: (e: React.DragEvent) => {
       const id = e.dataTransfer.getData(DOC_DRAG);
       if (!id) return;
@@ -213,6 +220,11 @@ export default function AdminClient(props: Props) {
       void moveDoc(id, target);
     },
   });
+
+  const loadContent = useCallback(
+    (id: string) => async () => (await api(`/api/admin/documents/${id}/content`, "GET")).text as string,
+    [api],
+  );
 
   return (
     <main>
@@ -226,33 +238,47 @@ export default function AdminClient(props: Props) {
               style={{ marginLeft: -10 }}
               {...dropProps(null, "root")}
             >
-              <ChevronLeft /> <span style={{ marginLeft: 4 }}>文件</span>
+              <ChevronLeft /> <span style={{ marginLeft: 4 }}>{t("files")}</span>
             </button>
           ) : (
-            <button className="icon-btn" onClick={() => setSheet({ type: "settings" })} aria-label="设置" style={{ marginLeft: -10 }}>
+            <button
+              className="icon-btn"
+              onClick={() => setSheet({ type: "settings" })}
+              aria-label={t("settings")}
+              style={{ marginLeft: -10 }}
+            >
               <GearIcon />
             </button>
           )}
         </div>
         <div className="nav-side">
           {folder && (
-            <button className="icon-btn" onClick={() => setSheet({ type: "space", id: folder.id })} aria-label="分享文件夹">
+            <button
+              className="icon-btn"
+              onClick={() => setSheet({ type: "space", id: folder.id })}
+              aria-label={t("shareFolder")}
+            >
               <ShareIcon />
             </button>
           )}
-          <button className="icon-btn" onClick={() => setSheet({ type: "add" })} aria-label="添加" style={{ marginRight: -10 }}>
+          <button
+            className="icon-btn"
+            onClick={() => setSheet({ type: "add" })}
+            aria-label={t("add")}
+            style={{ marginRight: -10 }}
+          >
             <PlusIcon />
           </button>
         </div>
       </div>
 
-      <div className="large-title">{folder ? folder.title : "文件"}</div>
+      <div className="large-title">{folder ? folder.title : t("files")}</div>
 
       {!props.hasPin && (
         <div className="group">
           <button className="cell" onClick={() => setSheet({ type: "settings" })}>
             <LockGlyph size={18} />
-            <span className="grow">设置 4 位查看密码</span>
+            <span className="grow">{t("setPinPrompt")}</span>
             <ChevronRight />
           </button>
         </div>
@@ -278,7 +304,7 @@ export default function AdminClient(props: Props) {
                   {s.require_pin !== false && <LockBadge />}
                 </div>
                 <div className="item-name">{s.title}</div>
-                <div className="item-meta">{counts.get(s.id) ?? 0} 项</div>
+                <div className="item-meta">{t("items", { n: counts.get(s.id) ?? 0 })}</div>
               </button>
             ))}
           {visibleDocs.map((d) => (
@@ -298,7 +324,7 @@ export default function AdminClient(props: Props) {
               onClick={() => setSheet({ type: "doc", id: d.id })}
             >
               <div className="item-art">
-                <FileIcon name={d.file_path} size={70} />
+                <FileIcon name={d.file_path} note={isNote(d)} size={70} />
                 {needsPin(d) && <LockBadge />}
               </div>
               <div className="item-name">{d.title}</div>
@@ -309,9 +335,9 @@ export default function AdminClient(props: Props) {
       ) : (
         <div className="empty">
           <TrayIcon />
-          <div>{folder ? "空文件夹" : "还没有文件"}</div>
+          <div>{folder ? t("emptyFolder") : t("noFiles")}</div>
           <button className="btn filled" style={{ marginTop: 18 }} onClick={() => pickerRef.current?.click()}>
-            上传文件
+            {t("uploadFiles")}
           </button>
         </div>
       )}
@@ -329,7 +355,11 @@ export default function AdminClient(props: Props) {
         }}
       />
 
-      {fileDrag && <div className="drop-overlay">松开即可上传{folder ? `到「${folder.title}」` : ""}</div>}
+      {fileDrag && (
+        <div className="drop-overlay">
+          {folder ? t("dropToUploadInto", { name: folder.title }) : t("dropToUpload")}
+        </div>
+      )}
       {toast && (
         <div className={toast.error ? "toast error" : "toast"} role="status">
           {toast.text}
@@ -338,7 +368,7 @@ export default function AdminClient(props: Props) {
 
       {/* ---------- 弹出面板 ---------- */}
       {sheet?.type === "add" && (
-        <Sheet title="添加" onClose={close}>
+        <Sheet title={t("add")} onClose={close}>
           <div className="group">
             <button
               className="cell"
@@ -348,49 +378,70 @@ export default function AdminClient(props: Props) {
               }}
             >
               <span className="cell-icon" style={{ background: "#007aff" }}>⇪</span>
-              <span className="grow">上传文件</span>
+              <span className="grow">{t("uploadFiles")}</span>
             </button>
-            <button className="cell" onClick={() => setSheet({ type: "newText" })}>
-              <span className="cell-icon" style={{ background: "#4b5563" }}>✎</span>
-              <span className="grow">新建文本</span>
+            <button className="cell" onClick={() => !requirePinFirst() && setSheet({ type: "newNote" })}>
+              <span className="cell-icon" style={{ background: "#f5b700" }}>✎</span>
+              <span className="grow">{t("newNote")}</span>
             </button>
             {!folder && (
               <button className="cell" onClick={() => setSheet({ type: "newFolder" })}>
                 <span className="cell-icon" style={{ background: "#34aadc" }}>▣</span>
-                <span className="grow">新建文件夹</span>
+                <span className="grow">{t("newFolder")}</span>
               </button>
             )}
           </div>
         </Sheet>
       )}
 
-      {sheet?.type === "newFolder" && <NewFolderSheet onClose={close} onDone={refresh} notify={notify} />}
+      {sheet?.type === "newFolder" && <NewFolderSheet api={api} onClose={close} onDone={refresh} notify={notify} />}
 
-      {sheet?.type === "newText" && (
-        <TextEditorSheet
+      {sheet?.type === "newNote" && (
+        <NoteEditor
           onClose={close}
-          onSave={async (title, text) => {
-            if (!props.hasPin) throw new Error("请先在设置里设定查看密码");
-            const name = `${title.replace(/[\\/:*?"<>|]/g, "_") || "无标题"}.txt`;
-            const path = await uploadFile(textFile(text, name));
+          onSave={async (title, body) => {
+            const name = `${safeName(title) || t("untitled")}${NOTE_SUFFIX}`;
+            const path = await uploadFile(noteFile(title, body, name));
             await api("/api/admin/documents", "POST", {
               path,
-              title: title || "无标题",
+              title: title || t("untitled"),
               originalName: name,
               requirePin: true,
               spaceId: folderId,
             });
             refresh();
-            notify("已保存");
+            notify(t("saved"));
           }}
         />
       )}
 
-      {sheet?.type === "editText" && sheetDoc && (
+      {sheet?.type === "edit" && sheetDoc && isNote(sheetDoc) && (
+        <NoteEditor
+          initialTitle={sheetDoc.title}
+          loadHtml={loadContent(sheetDoc.id)}
+          onClose={() => setSheet({ type: "doc", id: sheetDoc.id })}
+          onSave={async (title, body) => {
+            const path = await uploadFile(noteFile(title || sheetDoc.title, body, sheetDoc.original_name));
+            await api(`/api/admin/documents/${sheetDoc.id}`, "PATCH", {
+              action: "replace",
+              path,
+              originalName: sheetDoc.original_name,
+            });
+            if (title && title !== sheetDoc.title) {
+              await api(`/api/admin/documents/${sheetDoc.id}`, "PATCH", { action: "rename", title });
+            }
+            refresh();
+            notify(t("saved"));
+          }}
+        />
+      )}
+
+      {sheet?.type === "edit" && sheetDoc && !isNote(sheetDoc) && (
         <TextEditorSheet
           doc={sheetDoc}
+          loadText={loadContent(sheetDoc.id)}
           onClose={() => setSheet({ type: "doc", id: sheetDoc.id })}
-          onSave={async (_title, text) => {
+          onSave={async (text) => {
             const path = await uploadFile(textFile(text, sheetDoc.original_name));
             await api(`/api/admin/documents/${sheetDoc.id}`, "PATCH", {
               action: "replace",
@@ -398,19 +449,20 @@ export default function AdminClient(props: Props) {
               originalName: sheetDoc.original_name,
             });
             refresh();
-            notify("已保存");
+            notify(t("saved"));
           }}
         />
       )}
 
       {sheet?.type === "doc" && sheetDoc && (
         <DocSheet
+          api={api}
           doc={sheetDoc}
           spaces={props.spaces}
           origin={origin}
           retentionDays={props.retentionDays}
           uploadFile={uploadFile}
-          onEdit={() => setSheet({ type: "editText", id: sheetDoc.id })}
+          onEdit={() => setSheet({ type: "edit", id: sheetDoc.id })}
           onClose={close}
           onChanged={refresh}
           notify={notify}
@@ -419,13 +471,18 @@ export default function AdminClient(props: Props) {
 
       {sheet?.type === "space" && sheetSpace && (
         <SpaceSheet
+          api={api}
           space={sheetSpace}
           count={counts.get(sheetSpace.id) ?? 0}
           origin={origin}
-          onOpen={folder ? undefined : () => {
-            close();
-            openFolder(sheetSpace.id);
-          }}
+          onOpen={
+            folder
+              ? undefined
+              : () => {
+                  close();
+                  openFolder(sheetSpace.id);
+                }
+          }
           onDeleted={() => {
             close();
             openFolder(null);
@@ -437,43 +494,44 @@ export default function AdminClient(props: Props) {
       )}
 
       {sheet?.type === "settings" && (
-        <SettingsSheet loginId={props.loginId} hasPin={props.hasPin} onClose={close} onChanged={refresh} notify={notify} />
+        <SettingsSheet
+          api={api}
+          loginId={props.loginId}
+          hasPin={props.hasPin}
+          onClose={close}
+          onChanged={refresh}
+          notify={notify}
+        />
       )}
     </main>
   );
 }
 
-/** 文本存成 UTF-8（带 BOM，Windows 记事本旧版本也能正确识别） */
-function textFile(text: string, name: string) {
-  return new File(["﻿" + text], name, { type: "text/plain" });
-}
-
-type Notify = (text: string, error?: boolean) => void;
-
 /* ---------------- 分享区：链接 + 复制 + 二维码 ---------------- */
 
 function ShareGroup({ link, title, notify }: { link: string; title: string; notify: Notify }) {
+  const t = useT();
   const [qr, setQr] = useState(false);
   async function copy() {
     try {
       await navigator.clipboard.writeText(link);
-      notify("链接已复制");
+      notify(t("linkCopied"));
     } catch {
-      window.prompt("复制这个链接", link);
+      window.prompt(t("copyPrompt"), link);
     }
   }
   return (
     <>
-      <div className="group-title">分享</div>
+      <div className="group-title">{t("share")}</div>
       <div className="group">
         <div className="cell link-row">
           <span className="link-text">{link}</span>
           <button className="icon-btn" onClick={copy} style={{ fontWeight: 600 }}>
-            复制
+            {t("copy")}
           </button>
         </div>
         <button className="cell" onClick={() => setQr((v) => !v)}>
-          <span className="grow">二维码</span>
+          <span className="grow">{t("qrCode")}</span>
           <span style={{ transform: qr ? "rotate(90deg)" : "none", transition: "transform .2s", display: "flex" }}>
             <ChevronRight />
           </span>
@@ -484,9 +542,29 @@ function ShareGroup({ link, title, notify }: { link: string; title: string; noti
   );
 }
 
+/** 面板里按钮操作的通用处理：执行 → 刷新 → 提示 */
+function useRunner(onChanged: () => void, notify: Notify) {
+  const [busy, setBusy] = useState(false);
+  async function run(fn: () => Promise<unknown>, ok: string, after?: () => void) {
+    setBusy(true);
+    try {
+      await fn();
+      onChanged();
+      notify(ok);
+      after?.();
+    } catch (err) {
+      notify((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return { busy, run };
+}
+
 /* ---------------- 文件详情 ---------------- */
 
 function DocSheet({
+  api,
   doc,
   spaces,
   origin,
@@ -497,6 +575,7 @@ function DocSheet({
   onChanged,
   notify,
 }: {
+  api: Api;
   doc: DocumentRow;
   spaces: SpaceRow[];
   origin: string;
@@ -507,62 +586,61 @@ function DocSheet({
   onChanged: () => void;
   notify: Notify;
 }) {
-  const [busy, setBusy] = useState(false);
+  const t = useT();
+  const { busy, run } = useRunner(onChanged, notify);
   const replaceRef = useRef<HTMLInputElement>(null);
   const patch = (body: object) => api(`/api/admin/documents/${doc.id}`, "PATCH", body);
   const left = daysLeft(doc.expires_at);
-
-  async function run(fn: () => Promise<unknown>, ok: string) {
-    setBusy(true);
-    try {
-      await fn();
-      onChanged();
-      notify(ok);
-    } catch (err) {
-      notify((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const note = isNote(doc);
 
   return (
     <Sheet title="" onClose={onClose}>
       <div className="sheet-hero">
-        <a className="item-art" href={`/preview/${doc.id}`} style={{ width: 90, height: 96 }} aria-label="预览">
-          <FileIcon name={doc.file_path} size={92} />
+        <a className="item-art" href={`/preview/${doc.id}`} style={{ width: 90, height: 96 }} aria-label={t("preview")}>
+          <FileIcon name={doc.file_path} note={note} size={92} />
         </a>
         <div className="name">{doc.title}</div>
         <div className="muted">
-          {formatSize(doc.size_bytes)} · {left > 0 ? `${left} 天后自动删除` : "即将删除"}
+          {formatSize(doc.size_bytes)} · {left > 0 ? t("daysLeft", { n: left }) : t("deletingSoon")}
         </div>
-        <a className="btn filled" href={`/preview/${doc.id}`} style={{ marginTop: 10, minWidth: 160 }}>
-          预览
-        </a>
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <a className="btn filled" href={`/preview/${doc.id}`} style={{ minWidth: 130 }}>
+            {t("preview")}
+          </a>
+          {(note || isPlainEditable(doc)) && (
+            <button className="btn" style={{ minWidth: 130 }} disabled={busy} onClick={onEdit}>
+              {note ? t("editNote") : t("editText")}
+            </button>
+          )}
+        </div>
       </div>
 
       <ShareGroup link={`${origin}/d/${doc.token}`} title={doc.title} notify={notify} />
 
       <div className="group">
         <div className="cell">
-          <span className="grow">需要密码</span>
+          <span className="grow">{t("requirePin")}</span>
           <Switch
-            label="需要密码"
+            label={t("requirePin")}
             checked={needsPin(doc)}
             disabled={busy}
-            onChange={(v) => run(() => patch({ action: "access", requirePin: v }), v ? "已开启密码" : "已关闭密码")}
+            onChange={(v) => run(() => patch({ action: "access", requirePin: v }), v ? t("pinOn") : t("pinOff"))}
           />
         </div>
         {spaces.length > 0 && (
           <label className="cell">
-            <span className="grow">文件夹</span>
+            <span className="grow">{t("folder")}</span>
             <select
               value={doc.space_id ?? ""}
               disabled={busy}
               onChange={(e) =>
-                run(() => patch({ action: "space", spaceId: e.target.value || null }), e.target.value ? "已移入文件夹" : "已移出文件夹")
+                run(
+                  () => patch({ action: "space", spaceId: e.target.value || null }),
+                  e.target.value ? t("movedIn") : t("movedOut"),
+                )
               }
             >
-              <option value="">无</option>
+              <option value="">{t("none")}</option>
               {spaces.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title}
@@ -574,33 +652,36 @@ function DocSheet({
       </div>
 
       <div className="group">
-        {isEditable(doc) && (
-          <button className="cell action" disabled={busy} onClick={onEdit}>
-            编辑文本
+        <button
+          className="cell action"
+          disabled={busy}
+          onClick={() => {
+            const title = window.prompt(t("rename"), doc.title)?.trim();
+            if (title && title !== doc.title) run(() => patch({ action: "rename", title }), t("renamed"));
+          }}
+        >
+          {t("rename")}
+        </button>
+        {!note && (
+          <button className="cell action" disabled={busy} onClick={() => replaceRef.current?.click()}>
+            {t("replaceFile")}
           </button>
         )}
         <button
           className="cell action"
           disabled={busy}
-          onClick={() => {
-            const title = window.prompt("重命名", doc.title)?.trim();
-            if (title && title !== doc.title) run(() => patch({ action: "rename", title }), "已重命名");
-          }}
+          onClick={() => run(() => patch({ action: "extend" }), t("extended", { n: retentionDays }))}
         >
-          重命名
-        </button>
-        <button className="cell action" disabled={busy} onClick={() => replaceRef.current?.click()}>
-          替换文件
-        </button>
-        <button className="cell action" disabled={busy} onClick={() => run(() => patch({ action: "extend" }), `已延长到 ${retentionDays} 天后`)}>
-          延长 {retentionDays} 天
+          {t("extend", { n: retentionDays })}
         </button>
         <button
           className="cell action"
           disabled={busy}
-          onClick={() => window.confirm("换成新链接后，旧链接立即失效。") && run(() => patch({ action: "regenerate" }), "已换新链接")}
+          onClick={() =>
+            window.confirm(t("changeLinkConfirm")) && run(() => patch({ action: "regenerate" }), t("linkChanged"))
+          }
         >
-          更换链接
+          {t("changeLink")}
         </button>
       </div>
 
@@ -609,12 +690,12 @@ function DocSheet({
           className="cell destructive"
           disabled={busy}
           onClick={() => {
-            if (window.confirm(`删除「${doc.title}」？`)) {
-              run(() => api(`/api/admin/documents/${doc.id}`, "DELETE"), "已删除").then(onClose);
+            if (window.confirm(t("deleteConfirm", { name: doc.title }))) {
+              run(() => api(`/api/admin/documents/${doc.id}`, "DELETE"), t("deleted"), onClose);
             }
           }}
         >
-          删除
+          {t("delete")}
         </button>
       </div>
 
@@ -630,7 +711,7 @@ function DocSheet({
             run(async () => {
               const path = await uploadFile(f);
               await patch({ action: "replace", path, originalName: f.name });
-            }, "已替换");
+            }, t("replaced"));
           }
         }}
       />
@@ -641,6 +722,7 @@ function DocSheet({
 /* ---------------- 文件夹（空间）详情 ---------------- */
 
 function SpaceSheet({
+  api,
   space,
   count,
   origin,
@@ -650,6 +732,7 @@ function SpaceSheet({
   onChanged,
   notify,
 }: {
+  api: Api;
   space: SpaceRow;
   count: number;
   origin: string;
@@ -659,66 +742,56 @@ function SpaceSheet({
   onChanged: () => void;
   notify: Notify;
 }) {
-  const [busy, setBusy] = useState(false);
+  const t = useT();
+  const { busy, run } = useRunner(onChanged, notify);
   const patch = (body: object) => api(`/api/admin/spaces/${space.id}`, "PATCH", body);
-  async function run(fn: () => Promise<unknown>, ok: string, after?: () => void) {
-    setBusy(true);
-    try {
-      await fn();
-      onChanged();
-      notify(ok);
-      after?.();
-    } catch (err) {
-      notify((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <Sheet title="" onClose={onClose}>
       <div className="sheet-hero">
         <FolderIcon size={96} />
         <div className="name">{space.title}</div>
-        <div className="muted">{count} 项</div>
+        <div className="muted">{t("items", { n: count })}</div>
+        {onOpen && (
+          <button className="btn filled" style={{ marginTop: 10, minWidth: 130 }} onClick={onOpen}>
+            {t("open")}
+          </button>
+        )}
       </div>
 
       <ShareGroup link={`${origin}/s/${space.token}`} title={space.title} notify={notify} />
 
       <div className="group">
         <div className="cell">
-          <span className="grow">需要密码</span>
+          <span className="grow">{t("requirePin")}</span>
           <Switch
-            label="需要密码"
+            label={t("requirePin")}
             checked={space.require_pin !== false}
             disabled={busy}
-            onChange={(v) => run(() => patch({ action: "access", requirePin: v }), v ? "已开启密码" : "已关闭密码")}
+            onChange={(v) => run(() => patch({ action: "access", requirePin: v }), v ? t("pinOn") : t("pinOff"))}
           />
         </div>
       </div>
 
       <div className="group">
-        {onOpen && (
-          <button className="cell action" onClick={onOpen}>
-            打开
-          </button>
-        )}
         <button
           className="cell action"
           disabled={busy}
           onClick={() => {
-            const title = window.prompt("重命名", space.title)?.trim();
-            if (title && title !== space.title) run(() => patch({ action: "rename", title }), "已重命名");
+            const title = window.prompt(t("rename"), space.title)?.trim();
+            if (title && title !== space.title) run(() => patch({ action: "rename", title }), t("renamed"));
           }}
         >
-          重命名
+          {t("rename")}
         </button>
         <button
           className="cell action"
           disabled={busy}
-          onClick={() => window.confirm("换成新链接后，旧链接立即失效。") && run(() => patch({ action: "regenerate" }), "已换新链接")}
+          onClick={() =>
+            window.confirm(t("changeLinkConfirm")) && run(() => patch({ action: "regenerate" }), t("linkChanged"))
+          }
         >
-          更换链接
+          {t("changeLink")}
         </button>
       </div>
 
@@ -727,12 +800,12 @@ function SpaceSheet({
           className="cell destructive"
           disabled={busy}
           onClick={() => {
-            if (window.confirm(`删除文件夹「${space.title}」？\n里面的文件会保留，移到外面。`)) {
-              run(() => api(`/api/admin/spaces/${space.id}`, "DELETE"), "已删除文件夹", onDeleted);
+            if (window.confirm(t("deleteFolderConfirm", { name: space.title }))) {
+              run(() => api(`/api/admin/spaces/${space.id}`, "DELETE"), t("folderDeleted"), onDeleted);
             }
           }}
         >
-          删除文件夹
+          {t("deleteFolder")}
         </button>
       </div>
     </Sheet>
@@ -741,7 +814,18 @@ function SpaceSheet({
 
 /* ---------------- 新建文件夹 ---------------- */
 
-function NewFolderSheet({ onClose, onDone, notify }: { onClose: () => void; onDone: () => void; notify: Notify }) {
+function NewFolderSheet({
+  api,
+  onClose,
+  onDone,
+  notify,
+}: {
+  api: Api;
+  onClose: () => void;
+  onDone: () => void;
+  notify: Notify;
+}) {
+  const t = useT();
   const [title, setTitle] = useState("");
   const [requirePin, setRequirePin] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -751,7 +835,7 @@ function NewFolderSheet({ onClose, onDone, notify }: { onClose: () => void; onDo
     try {
       await api("/api/admin/spaces", "POST", { title, requirePin });
       onDone();
-      notify("已新建文件夹");
+      notify(t("folderCreated"));
       onClose();
     } catch (err) {
       notify((err as Error).message, true);
@@ -761,16 +845,16 @@ function NewFolderSheet({ onClose, onDone, notify }: { onClose: () => void; onDo
 
   return (
     <Sheet
-      title="新建文件夹"
+      title={t("newFolder")}
       onClose={onClose}
       left={
         <button className="icon-btn" onClick={onClose}>
-          取消
+          {t("cancel")}
         </button>
       }
       right={
         <button className="icon-btn" style={{ fontWeight: 600 }} disabled={busy || !title.trim()} onClick={create}>
-          完成
+          {t("done")}
         </button>
       }
     >
@@ -780,7 +864,7 @@ function NewFolderSheet({ onClose, onDone, notify }: { onClose: () => void; onDo
       <div className="group">
         <input
           className="field"
-          placeholder="文件夹名称"
+          placeholder={t("folderName")}
           value={title}
           maxLength={100}
           autoFocus
@@ -790,58 +874,59 @@ function NewFolderSheet({ onClose, onDone, notify }: { onClose: () => void; onDo
       </div>
       <div className="group">
         <div className="cell">
-          <span className="grow">需要密码</span>
-          <Switch label="需要密码" checked={requirePin} onChange={setRequirePin} />
+          <span className="grow">{t("requirePin")}</span>
+          <Switch label={t("requirePin")} checked={requirePin} onChange={setRequirePin} />
         </div>
       </div>
     </Sheet>
   );
 }
 
-/* ---------------- 文本编辑器 ---------------- */
+/* ---------------- 纯文本编辑器（编辑已有的 TXT / MD） ---------------- */
 
 function TextEditorSheet({
   doc,
+  loadText,
   onClose,
   onSave,
 }: {
-  doc?: DocumentRow;
+  doc: DocumentRow;
+  loadText: () => Promise<string>;
   onClose: () => void;
-  onSave: (title: string, text: string) => Promise<void>;
+  onSave: (text: string) => Promise<void>;
 }) {
-  const [title, setTitle] = useState("");
+  const t = useT();
   const [text, setText] = useState("");
   const [original, setOriginal] = useState("");
-  const [state, setState] = useState<"loading" | "ready" | "saving">(doc ? "loading" : "ready");
+  const [state, setState] = useState<"loading" | "ready" | "saving">("loading");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!doc) return;
-    api(`/api/admin/documents/${doc.id}/content`, "GET")
-      .then(({ text }) => {
-        setText(text);
-        setOriginal(text);
+    loadText()
+      .then((v) => {
+        setText(v);
+        setOriginal(v);
         setState("ready");
       })
       .catch((err) => setError((err as Error).message));
-  }, [doc]);
+  }, [loadText]);
 
-  const dirty = text !== original || (!doc && title !== "");
+  const dirty = text !== original;
   const save = useCallback(async () => {
     setState("saving");
     setError("");
     try {
-      await onSave(title.trim(), text);
+      await onSave(text);
       setOriginal(text);
       onClose();
     } catch (err) {
       setError((err as Error).message);
       setState("ready");
     }
-  }, [onSave, title, text, onClose]);
+  }, [onSave, text, onClose]);
 
   const cancel = () => {
-    if (!dirty || window.confirm("不保存就关闭？")) onClose();
+    if (!dirty || window.confirm(t("discardConfirm"))) onClose();
   };
 
   // Ctrl / ⌘ + S 保存
@@ -859,36 +944,31 @@ function TextEditorSheet({
   return (
     <Sheet
       tall
-      title={doc ? doc.title : "新建文本"}
+      title={doc.title}
       onClose={cancel}
       left={
         <button className="icon-btn" onClick={cancel}>
-          取消
+          {t("cancel")}
         </button>
       }
       right={
-        <button className="icon-btn" style={{ fontWeight: 600 }} disabled={state !== "ready" || (!!doc && !dirty)} onClick={save}>
-          {state === "saving" ? "保存中" : "保存"}
+        <button
+          className="icon-btn"
+          style={{ fontWeight: 600 }}
+          disabled={state !== "ready" || !dirty}
+          onClick={save}
+        >
+          {state === "saving" ? t("saving") : t("save")}
         </button>
       }
     >
-      {!doc && (
-        <input
-          className="field"
-          style={{ marginBottom: 10, fontWeight: 600 }}
-          placeholder="标题"
-          value={title}
-          maxLength={200}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-      )}
       {error && <p className="error" style={{ marginBottom: 10 }}>{error}</p>}
       <textarea
         className="editor"
         value={state === "loading" ? "" : text}
-        placeholder={state === "loading" ? "正在读取…" : "在这里输入内容"}
+        placeholder={state === "loading" ? t("loading") : t("typeHere")}
         disabled={state === "loading"}
-        autoFocus={!!doc}
+        autoFocus
         onChange={(e) => setText(e.target.value)}
         spellCheck={false}
       />
@@ -899,18 +979,21 @@ function TextEditorSheet({
 /* ---------------- 设置 ---------------- */
 
 function SettingsSheet({
+  api,
   loginId,
   hasPin,
   onClose,
   onChanged,
   notify,
 }: {
+  api: Api;
   loginId: string;
   hasPin: boolean;
   onClose: () => void;
   onChanged: () => void;
   notify: Notify;
 }) {
+  const t = useT();
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -920,7 +1003,7 @@ function SettingsSheet({
       await api("/api/admin/pin", "PUT", { pin });
       setPin("");
       onChanged();
-      notify("密码已保存");
+      notify(t("pinSaved"));
     } catch (err) {
       notify((err as Error).message, true);
     } finally {
@@ -934,15 +1017,18 @@ function SettingsSheet({
   }
 
   return (
-    <Sheet title="设置" onClose={onClose}>
+    <Sheet title={t("settings")} onClose={onClose}>
       <div className="group">
         <div className="cell">
-          <span className="grow">账号</span>
+          <span className="grow">{t("account")}</span>
           <span className="value">{loginId}</span>
         </div>
       </div>
 
-      <div className="group-title">查看密码{hasPin ? "（已设置）" : ""}</div>
+      <div className="group-title">
+        {t("viewPasscode")}
+        {hasPin ? t("pinIsSet") : ""}
+      </div>
       <div className="group">
         <div className="cell">
           <input
@@ -951,20 +1037,32 @@ function SettingsSheet({
             type="password"
             inputMode="numeric"
             autoComplete="new-password"
-            placeholder={hasPin ? "输入新的 4 位数字" : "设定 4 位数字"}
+            placeholder={hasPin ? t("newPinPh") : t("setPinPh")}
             maxLength={4}
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
           />
-          <button className="icon-btn" style={{ fontWeight: 600 }} disabled={busy || pin.length !== 4} onClick={savePin}>
-            保存
+          <button
+            className="icon-btn"
+            style={{ fontWeight: 600 }}
+            disabled={busy || pin.length !== 4}
+            onClick={savePin}
+          >
+            {t("save")}
           </button>
+        </div>
+      </div>
+
+      <div className="group-title">{t("language")}</div>
+      <div className="group">
+        <div className="cell" style={{ justifyContent: "center" }}>
+          <LangSwitch />
         </div>
       </div>
 
       <div className="group">
         <button className="cell destructive" onClick={logout}>
-          退出登录
+          {t("logout")}
         </button>
       </div>
     </Sheet>

@@ -34,7 +34,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (admin instanceof NextResponse) return admin;
   const { id } = await params;
   const doc = await ownDoc(id, admin.id);
-  if (!doc) return bad("未找到", 404);
+  if (!doc) return bad("notFound", 404);
 
   const body = await req.json().catch(() => ({}));
   const db = adminDb();
@@ -44,13 +44,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
   switch (body.action) {
     case "rename": {
       const title = typeof body.title === "string" ? body.title.trim().slice(0, 200) : "";
-      if (!title) return bad("标题不能为空");
+      if (!title) return bad("nameRequired");
       update = { title };
       break;
     }
     case "replace": {
       const uploaded = await verifyUploaded(admin.id, body.path);
-      if (!uploaded) return bad("找不到已上传的文件");
+      if (!uploaded) return bad("uploadMissing");
       const name =
         typeof body.originalName === "string" && body.originalName.trim()
           ? body.originalName.trim().slice(0, 200)
@@ -67,12 +67,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
       update = { expires_at: new Date(Date.now() + RETENTION_DAYS * 86_400_000).toISOString() };
       break;
     case "access":
-      if (typeof body.requirePin !== "boolean") return bad("参数错误");
+      if (typeof body.requirePin !== "boolean") return bad("badParams");
       update = { require_pin: body.requirePin };
       break;
     case "space": {
       const space = await ownSpaceId(admin.id, body.spaceId);
-      if (space === undefined) return bad("空间不存在");
+      if (space === undefined) return bad("folderMissing");
       update = { space_id: space };
       break;
     }
@@ -80,11 +80,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
       update = { token: newToken() };
       break;
     default:
-      return bad("未知操作");
+      return bad("unknownAction");
   }
 
   const { error } = await db.from("sharedoc_documents").update({ ...update, updated_at: now }).eq("id", doc.id);
-  if (error) return bad("保存失败", 500);
+  if (error) return bad("saveFailed", 500);
   if (body.action === "replace" && doc.file_path !== update.file_path) {
     await db.storage.from(BUCKET).remove([doc.file_path]);
   }
@@ -96,11 +96,11 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (admin instanceof NextResponse) return admin;
   const { id } = await params;
   const doc = await ownDoc(id, admin.id);
-  if (!doc) return bad("未找到", 404);
+  if (!doc) return bad("notFound", 404);
 
   const db = adminDb();
   await db.storage.from(BUCKET).remove([doc.file_path]);
   const { error } = await db.from("sharedoc_documents").delete().eq("id", doc.id);
-  if (error) return bad("删除失败", 500);
+  if (error) return bad("deleteFailed", 500);
   return NextResponse.json({ ok: true });
 }

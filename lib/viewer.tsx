@@ -1,6 +1,9 @@
 import { BUCKET, ENABLE_OFFICE_PREVIEW } from "./config";
 import { kindOf } from "./filetypes";
-import { formatDate, formatSize, type DocumentRow } from "./format";
+import { formatSize, type DocumentRow } from "./format";
+import { formatDateFor, type T } from "./i18n";
+import { getT } from "./i18n-server";
+import { LangSwitch } from "@/app/ui/I18n";
 import { adminDb } from "./supabase";
 import { decodeText } from "./text";
 import { TextPreview } from "./text-preview";
@@ -22,11 +25,11 @@ async function signedUrl(path: string, seconds: number) {
   return data?.signedUrl ?? null;
 }
 
-async function Preview({ doc }: { doc: DocumentRow }) {
+async function Preview({ doc, t }: { doc: DocumentRow; t: T }) {
   const kind = kindOf(doc.file_path);
 
   if (kind === "word" || kind === "excel" || kind === "ppt") {
-    if (!ENABLE_OFFICE_PREVIEW) return <p className="muted" style={{ marginTop: 24 }}>在线预览已关闭。</p>;
+    if (!ENABLE_OFFICE_PREVIEW) return <p className="muted" style={{ marginTop: 24 }}>{t("previewOff")}</p>;
     const url = await signedUrl(doc.file_path, 30 * 60);
     if (!url) return null;
     const src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
@@ -46,15 +49,16 @@ async function Preview({ doc }: { doc: DocumentRow }) {
 
   if (kind === "text" || kind === "markdown" || kind === "html") {
     const res = await readText(doc.file_path);
-    if (!res) return <p className="muted">文件暂时无法读取。</p>;
-    return <TextPreview kind={kind} text={res.text} truncated={res.truncated} title={doc.title} />;
+    if (!res) return <p className="muted">{t("unreadable")}</p>;
+    return <TextPreview kind={kind} text={res.text} truncated={res.truncated} title={doc.title} truncatedText={t("truncated")} />;
   }
 
-  return <p className="muted" style={{ marginTop: 24 }}>这种格式暂时无法在网页上浏览。</p>;
+  return <p className="muted" style={{ marginTop: 24 }}>{t("cannotView")}</p>;
 }
 
 /** 访问者看到的文档页：只能浏览，没有下载按钮 */
 export async function DocViewer({ doc, back }: { doc: DocumentRow; back?: { href: string; label: string } }) {
+  const { lang, t } = await getT();
   return (
     <main style={{ maxWidth: 1100 }}>
       <div className="viewer-bar">
@@ -63,12 +67,14 @@ export async function DocViewer({ doc, back }: { doc: DocumentRow; back?: { href
             <ChevronLeft /> <span style={{ marginLeft: 4 }}>{back.label}</span>
           </a>
         )}
+        <span style={{ flex: 1 }} />
+        <LangSwitch compact />
       </div>
       <div className="viewer-title">{doc.title}</div>
       <div className="muted">
-        {formatSize(doc.size_bytes)} · {formatDate(doc.expires_at)} 前可查看
+        {formatSize(doc.size_bytes)} · {t("availableUntil", { date: formatDateFor(lang, doc.expires_at) })}
       </div>
-      <Preview doc={doc} />
+      <Preview doc={doc} t={t} />
     </main>
   );
 }
@@ -77,6 +83,9 @@ export async function DocViewer({ doc, back }: { doc: DocumentRow; back?: { href
 export function Notice({ title, text }: { title: string; text: string }) {
   return (
     <div className="center-screen">
+      <div className="corner">
+        <LangSwitch compact />
+      </div>
       <h1>{title}</h1>
       <p className="muted">{text}</p>
     </div>

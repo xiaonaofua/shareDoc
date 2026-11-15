@@ -1,10 +1,10 @@
-import { KIND_STYLE, extOf, kindOf } from "@/lib/filetypes";
+import { KIND_STYLE, NOTE_COLOR, extOf, kindOf } from "@/lib/filetypes";
 
 /** 拟物化的纸张图标：右上角折角，下方彩色标签写着格式名 */
-export function FileIcon({ name, size = 64 }: { name: string; size?: number }) {
+export function FileIcon({ name, note, size = 64 }: { name: string; note?: boolean; size?: number }) {
   const kind = kindOf(name);
-  const color = KIND_STYLE[kind].color;
-  const ext = (extOf(name) ?? "FILE").toUpperCase().slice(0, 4);
+  const color = note ? NOTE_COLOR : KIND_STYLE[kind].color;
+  const ext = note ? "NOTE" : (extOf(name) ?? "FILE").toUpperCase().slice(0, 4);
   const h = size;
   const w = Math.round(size * 0.78);
   return (
@@ -54,7 +54,7 @@ export function FolderIcon({ size = 72 }: { size?: number }) {
 
 export function LockGlyph({ size = 12 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" aria-label="需要密码">
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-label="locked">
       <path
         fill="currentColor"
         d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7H4a1.5 1.5 0 0 0-1.5 1.5v5A1.5 1.5 0 0 0 4 15h8a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 12 7h-.5V4.5A3.5 3.5 0 0 0 8 1zm2 6H6V4.5a2 2 0 1 1 4 0z"

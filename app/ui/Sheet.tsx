@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useT } from "./I18n";
 
 /** iOS 风格的底部弹出面板（电脑上居中显示） */
 export default function Sheet({
@@ -18,6 +19,7 @@ export default function Sheet({
   tall?: boolean;
   children: React.ReactNode;
 }) {
+  const t = useT();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -39,7 +41,7 @@ export default function Sheet({
           <div style={{ minWidth: 64, textAlign: "right" }}>
             {right ?? (
               <button className="icon-btn" onClick={onClose} style={{ fontWeight: 600 }}>
-                完成
+                {t("done")}
               </button>
             )}
           </div>
