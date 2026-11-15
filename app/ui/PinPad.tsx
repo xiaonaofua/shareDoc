@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LockGlyph } from "./icons";
+import ProgressOverlay from "./Progress";
 import { LangSwitch, useT } from "./I18n";
 import { errorText } from "@/lib/i18n";
 
@@ -65,6 +66,7 @@ export default function PinPad({ action, title }: { action: string; title: strin
 
   return (
     <div className="center-screen">
+      {busy && <ProgressOverlay label={t("opening")} />}
       <div className="corner">
         <LangSwitch compact />
       </div>

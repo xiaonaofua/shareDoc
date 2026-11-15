@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FolderIcon } from "./icons";
+import ProgressOverlay from "./Progress";
 import { LangSwitch, useT } from "./I18n";
 import { errorText } from "@/lib/i18n";
 
@@ -32,6 +33,7 @@ export default function LoginForm() {
 
   return (
     <div className="center-screen">
+      {busy && <ProgressOverlay label={t("loggingIn")} />}
       <div className="corner">
         <LangSwitch compact />
       </div>

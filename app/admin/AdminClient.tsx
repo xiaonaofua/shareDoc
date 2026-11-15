@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import Link from "next/link";
 import { ACCEPT, FILE_TYPES, NOTE_SUFFIX, SUPPORTED_LABEL, extOf, isNoteName, kindOf } from "@/lib/filetypes";
 import { daysLeft, formatSize, needsPin, type DocumentRow, type SpaceRow } from "@/lib/format";
 import { wrapNote } from "@/lib/note";
@@ -20,6 +20,7 @@ import {
 } from "@/app/ui/icons";
 import { LangSwitch, useApi, useT } from "@/app/ui/I18n";
 import NoteEditor from "@/app/ui/NoteEditor";
+import ProgressOverlay from "@/app/ui/Progress";
 import QrPanel from "@/app/ui/QrPanel";
 import Sheet, { Switch } from "@/app/ui/Sheet";
 
@@ -48,6 +49,35 @@ type SheetState =
   | null;
 
 type Api = ReturnType<typeof useApi>;
+type WithProgress = <R>(label: string, fn: () => Promise<R>) => Promise<R>;
+
+/**
+ * 直接把文件 PUT 到 Supabase 的签名上传地址。
+ * 用 XMLHttpRequest 而不是 fetch：这样能拿到上传百分比，显示进度条。
+ */
+function putFile(url: string, file: File, mime: string, anonKey: string, onProgress: (pct: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("apikey", anonKey);
+    if (anonKey.startsWith("eyJ")) xhr.setRequestHeader("Authorization", `Bearer ${anonKey}`);
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.setRequestHeader("cache-control", "max-age=3600");
+    xhr.setRequestHeader("content-type", mime);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress((e.loaded / e.total) * 100);
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let msg = `HTTP ${xhr.status}`;
+      try {
+        const j = JSON.parse(xhr.responseText);
+        msg = j.message || j.error || msg;
+      } catch {}
+      reject(new Error(msg));
+    };
+    xhr.onerror = () => reject(new Error("network error"));
+    xhr.send(file);
+  });
+}
 type Notify = (text: string, error?: boolean) => void;
 
 const isNote = (d: DocumentRow) => isNoteName(d.original_name);
@@ -71,14 +101,11 @@ export default function AdminClient(props: Props) {
   const api = useApi();
   const router = useRouter();
   const refresh = useCallback(() => router.refresh(), [router]);
-  const supabase = useMemo(
-    () => createBrowserClient(props.supabaseUrl, props.supabaseAnonKey),
-    [props.supabaseUrl, props.supabaseAnonKey],
-  );
   const [origin, setOrigin] = useState("");
   const [folderId, setFolderId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
+  const [progress, setProgress] = useState<{ label: string; percent?: number } | null>(null);
   const [fileDrag, setFileDrag] = useState(false);
   const [dragDoc, setDragDoc] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -104,7 +131,17 @@ export default function AdminClient(props: Props) {
     toastTimer.current = setTimeout(() => setToast(null), error ? 5000 : 2200);
   }, []);
 
-  /** 检查文件 → 取上传地址 → 浏览器直传 Supabase，返回存储路径 */
+  /** 一段操作期间在屏幕中间显示进度条；上传时会自动显示百分比 */
+  const withProgress: WithProgress = useCallback(async (label, fn) => {
+    setProgress({ label });
+    try {
+      return await fn();
+    } finally {
+      setProgress(null);
+    }
+  }, []);
+
+  /** 检查文件 → 取上传地址 → 浏览器直传 Supabase（带百分比），返回存储路径 */
   const uploadFile = useCallback(
     async (file: File): Promise<string> => {
       const ext = extOf(file.name);
@@ -112,13 +149,20 @@ export default function AdminClient(props: Props) {
       const mb = Math.round(props.maxFileBytes / 1024 / 1024);
       if (file.size > props.maxFileBytes) throw new Error(t("fileTooLargeName", { name: file.name, mb }));
       const { path, token } = await api("/api/admin/upload-url", "POST", { fileName: file.name, size: file.size });
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .uploadToSignedUrl(path, token, file, { contentType: FILE_TYPES[ext].mime });
-      if (error) throw new Error(t("uploadFailed", { name: file.name, msg: error.message }));
+      const url = `${props.supabaseUrl}/storage/v1/object/upload/sign/${BUCKET}/${path}?token=${encodeURIComponent(token)}`;
+      setProgress((p) => (p ? { ...p, percent: 0 } : p));
+      try {
+        await putFile(url, file, FILE_TYPES[ext].mime, props.supabaseAnonKey, (pct) =>
+          setProgress((p) => (p ? { ...p, percent: pct } : p)),
+        );
+      } catch (err) {
+        throw new Error(t("uploadFailed", { name: file.name, msg: (err as Error).message }));
+      }
+      // 上传完成，后面登记到数据库的几百毫秒显示“处理中”动画
+      setProgress((p) => (p ? { label: p.label } : p));
       return path;
     },
-    [supabase, props.maxFileBytes, api, t],
+    [props.maxFileBytes, props.supabaseUrl, props.supabaseAnonKey, api, t],
   );
 
   const requirePinFirst = useCallback(() => {
@@ -133,7 +177,7 @@ export default function AdminClient(props: Props) {
       if (requirePinFirst()) return;
       const failed: string[] = [];
       for (const [i, f] of files.entries()) {
-        notify(t("uploading", { i: i + 1, n: files.length }));
+        setProgress({ label: t("uploading", { i: i + 1, n: files.length }) });
         try {
           const path = await uploadFile(f);
           await api("/api/admin/documents", "POST", {
@@ -147,6 +191,7 @@ export default function AdminClient(props: Props) {
           failed.push((err as Error).message);
         }
       }
+      setProgress(null);
       refresh();
       if (failed.length) notify(failed.join("；"), true);
       else notify(files.length > 1 ? t("uploadedN", { n: files.length }) : t("uploaded"));
@@ -368,6 +413,7 @@ export default function AdminClient(props: Props) {
           {folder ? t("dropToUploadInto", { name: folder.title }) : t("dropToUpload")}
         </div>
       )}
+      {progress && <ProgressOverlay label={progress.label} percent={progress.percent} />}
       {toast && (
         <div className={toast.error ? "toast error" : "toast"} role="status">
           {toast.text}
@@ -407,7 +453,7 @@ export default function AdminClient(props: Props) {
       {sheet?.type === "newNote" && (
         <NoteEditor
           onClose={close}
-          onSave={async (title, body) => {
+          onSave={(title, body) => withProgress(t("saving"), async () => {
             const name = `${safeName(title) || t("untitled")}${NOTE_SUFFIX}`;
             const path = await uploadFile(noteFile(title, body, name));
             await api("/api/admin/documents", "POST", {
@@ -419,7 +465,7 @@ export default function AdminClient(props: Props) {
             });
             refresh();
             notify(t("saved"));
-          }}
+          })}
         />
       )}
 
@@ -428,7 +474,7 @@ export default function AdminClient(props: Props) {
           initialTitle={sheetDoc.title}
           loadHtml={loadContent(sheetDoc.id)}
           onClose={() => setSheet({ type: "doc", id: sheetDoc.id })}
-          onSave={async (title, body) => {
+          onSave={(title, body) => withProgress(t("saving"), async () => {
             const path = await uploadFile(noteFile(title || sheetDoc.title, body, sheetDoc.original_name));
             await api(`/api/admin/documents/${sheetDoc.id}`, "PATCH", {
               action: "replace",
@@ -440,7 +486,7 @@ export default function AdminClient(props: Props) {
             }
             refresh();
             notify(t("saved"));
-          }}
+          })}
         />
       )}
 
@@ -449,7 +495,7 @@ export default function AdminClient(props: Props) {
           doc={sheetDoc}
           loadText={loadContent(sheetDoc.id)}
           onClose={() => setSheet({ type: "doc", id: sheetDoc.id })}
-          onSave={async (text) => {
+          onSave={(text) => withProgress(t("saving"), async () => {
             const path = await uploadFile(textFile(text, sheetDoc.original_name));
             await api(`/api/admin/documents/${sheetDoc.id}`, "PATCH", {
               action: "replace",
@@ -458,7 +504,7 @@ export default function AdminClient(props: Props) {
             });
             refresh();
             notify(t("saved"));
-          }}
+          })}
         />
       )}
 
@@ -470,6 +516,7 @@ export default function AdminClient(props: Props) {
           origin={origin}
           retentionDays={props.retentionDays}
           uploadFile={uploadFile}
+          withProgress={withProgress}
           onEdit={() => setSheet({ type: "edit", id: sheetDoc.id })}
           onClose={close}
           onChanged={refresh}
@@ -578,6 +625,7 @@ function DocSheet({
   origin,
   retentionDays,
   uploadFile,
+  withProgress,
   onEdit,
   onClose,
   onChanged,
@@ -589,6 +637,7 @@ function DocSheet({
   origin: string;
   retentionDays: number;
   uploadFile: (f: File) => Promise<string>;
+  withProgress: WithProgress;
   onEdit: () => void;
   onClose: () => void;
   onChanged: () => void;
@@ -604,18 +653,18 @@ function DocSheet({
   return (
     <Sheet title="" onClose={onClose}>
       <div className="sheet-hero">
-        <a className="item-art" href={`/preview/${doc.id}`} style={{ width: 90, height: 96 }} aria-label={t("preview")}>
+        <Link className="item-art" href={`/preview/${doc.id}`} style={{ width: 90, height: 96 }} aria-label={t("preview")}>
           <FileIcon name={doc.file_path} note={note} size={92} />
-        </a>
+        </Link>
         <div className="name">{doc.title}</div>
         <div className="muted">
           {formatSize(doc.size_bytes)} · {left > 0 ? t("daysLeft", { n: left }) : t("deletingSoon")}
         </div>
         <StateTag download={doc.allow_download === true} />
         <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-          <a className="btn filled" href={`/preview/${doc.id}`} style={{ minWidth: 130 }}>
+          <Link className="btn filled" href={`/preview/${doc.id}`} style={{ minWidth: 130 }}>
             {t("preview")}
-          </a>
+          </Link>
           {(note || isPlainEditable(doc)) && (
             <button className="btn" style={{ minWidth: 130 }} disabled={busy} onClick={onEdit}>
               {note ? t("editNote") : t("editText")}
@@ -728,10 +777,14 @@ function DocSheet({
           const f = e.target.files?.[0];
           e.target.value = "";
           if (f) {
-            run(async () => {
-              const path = await uploadFile(f);
-              await patch({ action: "replace", path, originalName: f.name });
-            }, t("replaced"));
+            run(
+              () =>
+                withProgress(t("uploading", { i: 1, n: 1 }), async () => {
+                  const path = await uploadFile(f);
+                  await patch({ action: "replace", path, originalName: f.name });
+                }),
+              t("replaced"),
+            );
           }
         }}
       />

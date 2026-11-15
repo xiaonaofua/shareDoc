@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ProgressOverlay from "./Progress";
 import { useT } from "./I18n";
 
 /**
  * 用 pdf.js 把 PDF 逐页画成图片显示。
  * 不用浏览器自带的 PDF 阅读器：那个会带下载按钮，安卓上还会直接变成下载。
+ * 第一页画出来之前，在屏幕中间显示下载进度。
  */
 export default function PdfViewer({ url }: { url: string }) {
   const t = useT();
   const box = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
-  const [progress, setProgress] = useState("");
+  const [percent, setPercent] = useState<number | undefined>(undefined);
+  const [pages, setPages] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -24,6 +27,9 @@ export default function PdfViewer({ url }: { url: string }) {
           import.meta.url,
         ).toString();
         const task = pdfjs.getDocument({ url });
+        task.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
+          if (total > 0 && !cancelled) setPercent((loaded / total) * 100);
+        };
         destroy = () => void task.destroy();
         const pdf = await task.promise;
         const container = box.current;
@@ -31,9 +37,8 @@ export default function PdfViewer({ url }: { url: string }) {
         container.replaceChildren();
         const cssWidth = Math.min(container.clientWidth || 800, 900);
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
-        setState("ok");
         for (let i = 1; i <= pdf.numPages && !cancelled; i++) {
-          setProgress(pdf.numPages > 1 ? `${i} / ${pdf.numPages}` : "");
+          if (pdf.numPages > 1) setPages(`${i} / ${pdf.numPages}`);
           const page = await pdf.getPage(i);
           const base = page.getViewport({ scale: 1 });
           const viewport = page.getViewport({ scale: (cssWidth / base.width) * ratio });
@@ -44,8 +49,9 @@ export default function PdfViewer({ url }: { url: string }) {
           canvas.oncontextmenu = (e) => e.preventDefault();
           container.appendChild(canvas);
           await page.render({ canvas, viewport }).promise;
+          if (i === 1) setState("ok"); // 第一页出来就收起进度条，后面的页继续在下面加载
         }
-        setProgress("");
+        setPages("");
       } catch {
         if (!cancelled) setState("error");
       }
@@ -58,10 +64,10 @@ export default function PdfViewer({ url }: { url: string }) {
 
   return (
     <>
-      {state === "loading" && <p className="muted" style={{ textAlign: "center", marginTop: 40 }}>{t("pdfLoading")}</p>}
+      {state === "loading" && <ProgressOverlay label={t("pdfLoading")} percent={percent} />}
       {state === "error" && <p className="muted" style={{ textAlign: "center", marginTop: 40 }}>{t("pdfError")}</p>}
       <div ref={box} className="pdf-pages" />
-      {progress && <p className="muted" style={{ textAlign: "center" }}>{progress}</p>}
+      {pages && <p className="muted" style={{ textAlign: "center" }}>{pages}</p>}
     </>
   );
 }

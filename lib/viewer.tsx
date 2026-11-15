@@ -8,6 +8,8 @@ import { adminDb } from "./supabase";
 import { decodeText } from "./text";
 import { TextPreview } from "./text-preview";
 import PdfViewer from "@/app/ui/PdfViewer";
+import { LoadingFrame, LoadingImage } from "@/app/ui/Loaders";
+import Link from "next/link";
 import { ChevronLeft } from "@/app/ui/icons";
 
 const TEXT_PREVIEW_BYTES = 1024 * 1024; // 文本预览最多显示前 1MB
@@ -33,7 +35,7 @@ async function Preview({ doc, t }: { doc: DocumentRow; t: T }) {
     const url = await signedUrl(doc.file_path, 30 * 60);
     if (!url) return null;
     const src = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
-    return <iframe className="preview" src={src} title={doc.title} />;
+    return <LoadingFrame src={src} title={doc.title} />;
   }
 
   if (kind === "pdf") {
@@ -43,8 +45,7 @@ async function Preview({ doc, t }: { doc: DocumentRow; t: T }) {
 
   if (kind === "image") {
     const url = await signedUrl(doc.file_path, 60 * 60);
-    // eslint-disable-next-line @next/next/no-img-element
-    return url ? <img className="image-view" src={url} alt={doc.title} /> : null;
+    return url ? <LoadingImage src={url} alt={doc.title} /> : null;
   }
 
   if (kind === "text" || kind === "markdown" || kind === "html") {
@@ -72,9 +73,9 @@ export async function DocViewer({
     <main style={{ maxWidth: 1100 }}>
       <div className="viewer-bar">
         {back && (
-          <a className="icon-btn" href={back.href} style={{ marginLeft: -10 }}>
+          <Link className="icon-btn" href={back.href} style={{ marginLeft: -10 }}>
             <ChevronLeft /> <span style={{ marginLeft: 4 }}>{back.label}</span>
-          </a>
+          </Link>
         )}
         <span style={{ flex: 1 }} />
         <LangSwitch compact />

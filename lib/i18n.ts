@@ -21,6 +21,8 @@ const zh = {
   items: "{n} 项",
   untitled: "无标题",
   loading: "正在读取…",
+  opening: "正在打开…",
+  working: "处理中…",
   genericError: "出错了，请稍后再试",
   language: "语言",
 
@@ -185,6 +187,8 @@ const ja: Dict = {
   items: "{n} 項目",
   untitled: "無題",
   loading: "読み込み中…",
+  opening: "開いています…",
+  working: "処理中…",
   genericError: "エラーが発生しました。しばらくしてからお試しください",
   language: "言語",
 
@@ -338,6 +342,8 @@ const en: Dict = {
   items: "{n} items",
   untitled: "Untitled",
   loading: "Loading…",
+  opening: "Opening…",
+  working: "Working…",
   genericError: "Something went wrong. Please try again later",
   language: "Language",
 
