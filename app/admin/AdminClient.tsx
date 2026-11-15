@@ -528,13 +528,16 @@ function DocSheet({
   return (
     <Sheet title="" onClose={onClose}>
       <div className="sheet-hero">
-        <div className="item-art" style={{ width: 90, height: 96 }}>
+        <a className="item-art" href={`/preview/${doc.id}`} style={{ width: 90, height: 96 }} aria-label="预览">
           <FileIcon name={doc.file_path} size={92} />
-        </div>
+        </a>
         <div className="name">{doc.title}</div>
         <div className="muted">
           {formatSize(doc.size_bytes)} · {left > 0 ? `${left} 天后自动删除` : "即将删除"}
         </div>
+        <a className="btn filled" href={`/preview/${doc.id}`} style={{ marginTop: 10, minWidth: 160 }}>
+          预览
+        </a>
       </div>
 
       <ShareGroup link={`${origin}/d/${doc.token}`} title={doc.title} notify={notify} />
