@@ -84,6 +84,7 @@ const zh = {
   deletingSoon: "即将删除",
   folderName: "文件夹名称",
   folderCreated: "已新建文件夹",
+  folderRuleNote: "文件夹里的每个文件按各自的“需要密码 / 允许下载”设置。",
 
   // 文本 / 笔记编辑
   newText: "新建文本",
@@ -248,6 +249,7 @@ const ja: Dict = {
   deletingSoon: "まもなく削除",
   folderName: "フォルダ名",
   folderCreated: "フォルダを作成しました",
+  folderRuleNote: "フォルダ内の各ファイルは、それぞれの「パスコード / ダウンロード」設定に従います。",
 
   newText: "新規テキスト",
   titlePh: "タイトル",
@@ -403,6 +405,7 @@ const en: Dict = {
   deletingSoon: "Deleting soon",
   folderName: "Folder name",
   folderCreated: "Folder created",
+  folderRuleNote: "Each file in the folder follows its own passcode and download settings.",
 
   newText: "New Text",
   titlePh: "Title",

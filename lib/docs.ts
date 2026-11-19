@@ -75,5 +75,3 @@ export async function ownSpaceId(ownerId: string, spaceId: unknown): Promise<str
   return data?.id ?? undefined;
 }
 
-/** 空间的“已输入密码”Cookie 用的键（与文档令牌区分开） */
-export const spaceKey = (token: string) => `s_${token}`;

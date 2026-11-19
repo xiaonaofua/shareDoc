@@ -352,11 +352,9 @@ export default function AdminClient(props: Props) {
               >
                 <div className="item-art">
                   <FolderIcon size={76} />
-                  {s.require_pin !== false && <LockBadge />}
                 </div>
                 <div className="item-name">{s.title}</div>
                 <div className="item-meta">{t("items", { n: counts.get(s.id) ?? 0 })}</div>
-                <StateTag download={s.allow_download === true} />
               </button>
             ))}
           {visibleDocs.map((d) => (
@@ -825,7 +823,6 @@ function SpaceSheet({
         <FolderIcon size={96} />
         <div className="name">{space.title}</div>
         <div className="muted">{t("items", { n: count })}</div>
-        <StateTag download={space.allow_download === true} />
         {onOpen && (
           <button className="btn filled" style={{ marginTop: 10, minWidth: 130 }} onClick={onOpen}>
             {t("open")}
@@ -835,28 +832,7 @@ function SpaceSheet({
 
       <ShareGroup link={`${origin}/s/${space.token}`} title={space.title} notify={notify} />
 
-      <div className="group">
-        <div className="cell">
-          <span className="grow">{t("requirePin")}</span>
-          <Switch
-            label={t("requirePin")}
-            checked={space.require_pin !== false}
-            disabled={busy}
-            onChange={(v) => run(() => patch({ action: "access", requirePin: v }), v ? t("pinOn") : t("pinOff"))}
-          />
-        </div>
-        <div className="cell">
-          <span className="grow">{t("allowDownload")}</span>
-          <Switch
-            label={t("allowDownload")}
-            checked={space.allow_download === true}
-            disabled={busy}
-            onChange={(v) =>
-              run(() => patch({ action: "download", allowDownload: v }), v ? t("downloadOn") : t("downloadOff"))
-            }
-          />
-        </div>
-      </div>
+      <p className="group-foot" style={{ marginTop: -12 }}>{t("folderRuleNote")}</p>
 
       <div className="group">
         <button
@@ -912,13 +888,12 @@ function NewFolderSheet({
 }) {
   const t = useT();
   const [title, setTitle] = useState("");
-  const [requirePin, setRequirePin] = useState(true);
   const [busy, setBusy] = useState(false);
 
   async function create() {
     setBusy(true);
     try {
-      await api("/api/admin/spaces", "POST", { title, requirePin });
+      await api("/api/admin/spaces", "POST", { title });
       onDone();
       notify(t("folderCreated"));
       onClose();
@@ -956,12 +931,6 @@ function NewFolderSheet({
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && title.trim() && create()}
         />
-      </div>
-      <div className="group">
-        <div className="cell">
-          <span className="grow">{t("requirePin")}</span>
-          <Switch label={t("requirePin")} checked={requirePin} onChange={setRequirePin} />
-        </div>
       </div>
     </Sheet>
   );

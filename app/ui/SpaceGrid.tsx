@@ -1,20 +1,18 @@
 import Link from "next/link";
-import type { DocumentRow } from "@/lib/format";
-import { FileIcon, TrayIcon } from "./icons";
+import { needsPin, type DocumentRow } from "@/lib/format";
+import { FileIcon, LockBadge, TrayIcon } from "./icons";
 import { getT } from "@/lib/i18n-server";
 import { isNoteName } from "@/lib/filetypes";
 
-/** 访问者看到的空间：文件像桌面图标一样平铺，图片显示缩略图 */
+/** 访问者看到的文件夹：文件平铺，每个文件显示自己的“需要密码 / 可下载”状态 */
 export default async function SpaceGrid({
   token,
   docs,
   thumbs,
-  downloadable,
 }: {
   token: string;
   docs: DocumentRow[];
   thumbs: Map<string, string>;
-  downloadable: boolean;
 }) {
   const { t } = await getT();
   if (docs.length === 0) {
@@ -38,10 +36,11 @@ export default async function SpaceGrid({
               ) : (
                 <FileIcon name={d.file_path} note={isNoteName(d.original_name)} size={70} />
               )}
+              {needsPin(d) && <LockBadge />}
             </div>
             <div className="item-name">{d.title}</div>
-            <span className={downloadable ? "state-tag dl" : "state-tag view"}>
-              {downloadable ? t("badgeDownload") : t("badgeViewOnly")}
+            <span className={d.allow_download ? "state-tag dl" : "state-tag view"}>
+              {d.allow_download ? t("badgeDownload") : t("badgeViewOnly")}
             </span>
           </Link>
         );

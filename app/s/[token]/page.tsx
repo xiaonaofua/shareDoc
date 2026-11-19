@@ -1,31 +1,26 @@
 import { notFound } from "next/navigation";
-import PinPad from "@/app/ui/PinPad";
 import SpaceGrid from "@/app/ui/SpaceGrid";
-import { BUCKET } from "@/lib/config";
-import { kindOf } from "@/lib/filetypes";
-import { spaceAccess } from "@/lib/space-access";
-import { adminDb } from "@/lib/supabase";
-import { Notice } from "@/lib/viewer";
-import { getT } from "@/lib/i18n-server";
 import { LangSwitch } from "@/app/ui/I18n";
+import { BUCKET } from "@/lib/config";
+import { findSpace } from "@/lib/docs";
+import { kindOf } from "@/lib/filetypes";
+import { needsPin } from "@/lib/format";
+import { adminDb } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-/** 空间页：像打开一个文件夹，里面的文件平铺显示 */
+/**
+ * 文件夹页：文件夹只是一个分组，打开不需要密码。
+ * 里面的每个文件按各自的设置（需要密码 / 允许下载）显示和打开。
+ */
 export default async function SpacePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const access = await spaceAccess(token);
-  if (!access) notFound();
-  const { space, docs, status } = access;
+  const found = await findSpace(token);
+  if (!found) notFound();
+  const { space, docs } = found;
 
-  if (status === "nopin") {
-    const { t } = await getT();
-    return <Notice title={t("unavailable")} text={t("ownerNoPin")} />;
-  }
-  if (status === "pin") return <PinPad action={`/api/s/${token}/unlock`} title={space.title} />;
-
-  // 图片显示缩略图
-  const images = docs.filter((d) => kindOf(d.file_path) === "image");
+  // 不需要密码的图片显示缩略图（需要密码的不提前露出内容）
+  const images = docs.filter((d) => kindOf(d.file_path) === "image" && !needsPin(d));
   const thumbs = new Map<string, string>();
   if (images.length) {
     const { data } = await adminDb()
@@ -41,7 +36,7 @@ export default async function SpacePage({ params }: { params: Promise<{ token: s
         <LangSwitch compact />
       </div>
       <div className="large-title">{space.title}</div>
-      <SpaceGrid token={token} docs={docs} thumbs={thumbs} downloadable={space.allow_download === true} />
+      <SpaceGrid token={token} docs={docs} thumbs={thumbs} />
     </main>
   );
 }

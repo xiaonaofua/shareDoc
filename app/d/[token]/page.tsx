@@ -1,11 +1,9 @@
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import PinPad from "@/app/ui/PinPad";
+import { docAccess } from "@/lib/doc-access";
 import { findSharedDoc } from "@/lib/docs";
-import { needsPin } from "@/lib/format";
-import { checkUnlockCookie, unlockCookieName } from "@/lib/security";
-import { DocViewer, Notice } from "@/lib/viewer";
 import { getT } from "@/lib/i18n-server";
+import { DocViewer, Notice } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +14,12 @@ export default async function SharedDocPage({ params }: { params: Promise<{ toke
   if (!found) notFound();
   const { doc, pinHash } = found;
 
-  if (needsPin(doc)) {
-    if (!pinHash) {
-      const { t } = await getT();
-      return <Notice title={t("unavailable")} text={t("ownerNoPin")} />;
-    }
-    const store = await cookies();
-    if (!checkUnlockCookie(store.get(unlockCookieName(token))?.value, token, pinHash)) {
-      return <PinPad action={`/api/d/${token}/unlock`} title={doc.title} />;
-    }
+  const status = await docAccess(doc, pinHash);
+  if (status === "nopin") {
+    const { t } = await getT();
+    return <Notice title={t("unavailable")} text={t("ownerNoPin")} />;
   }
+  if (status === "pin") return <PinPad action={`/api/d/${token}/unlock`} title={doc.title} />;
 
   return <DocViewer doc={doc} downloadHref={doc.allow_download ? `/api/d/${token}/file` : undefined} />;
 }
